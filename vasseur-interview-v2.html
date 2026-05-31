@@ -1,0 +1,826 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vasseur — Interview Critique</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;1,400&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--ink:#1a1410;--paper:#f5f0e8;--paper2:#ede6d6;--red:#c0392b;--rdk:#922b21;--gold:#b7860a;--muted:#7a7060;--brd:#c8bda8;--ok-bg:#f2faf4;--ok-c:#1e6b3e;--wn-bg:#fffbf0;--wn-c:#7d4e0f;--fl-bg:#fdf3f2;--fl-c:#8b1a1a}
+body{font-family:'IBM Plex Sans',sans-serif;background:var(--paper);color:var(--ink);min-height:100vh}
+.hdr{background:var(--ink);color:var(--paper);padding:14px 26px;display:flex;align-items:center;justify-content:space-between;border-bottom:3px solid var(--red);position:sticky;top:0;z-index:100}
+.hdr-t{font-family:'Playfair Display',serif;font-size:.95rem;letter-spacing:.04em}
+.hdr-s{font-family:'IBM Plex Mono',monospace;font-size:.6rem;color:#aaa;margin-top:2px}
+.hdr-r{display:flex;flex-direction:column;align-items:flex-end;gap:3px}
+.prog-lbl{font-family:'IBM Plex Mono',monospace;font-size:.6rem;color:#aaa}
+.prog-out{width:140px;height:3px;background:#444;border-radius:2px;overflow:hidden}
+.prog-in{height:100%;background:var(--red);transition:width .4s;border-radius:2px}
+.mbadge{font-family:'IBM Plex Mono',monospace;font-size:.58rem;background:var(--red);color:#fff;padding:2px 6px;letter-spacing:.06em;text-transform:uppercase;display:none}
+.vc{background:var(--ink);color:var(--paper);margin:18px 26px;padding:16px 20px;border-left:4px solid var(--red)}
+.vn{font-family:'IBM Plex Mono',monospace;font-size:.6rem;color:var(--red);letter-spacing:.1em;text-transform:uppercase;margin-bottom:5px}
+.vt{font-family:'Playfair Display',serif;font-style:italic;font-size:.95rem;line-height:1.65;color:#e8e0d0}
+.main{max-width:820px;width:100%;margin:0 auto;padding:0 26px 40px}
+/* FORM */
+.cfg-title{font-family:'Playfair Display',serif;font-size:1.35rem;font-weight:700;margin-bottom:5px}
+.cfg-sub{font-size:.86rem;color:var(--muted);margin-bottom:24px;line-height:1.5}
+.fg{margin-bottom:16px}
+.fl{font-family:'IBM Plex Mono',monospace;font-size:.66rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:5px;display:block}
+.fl em{color:var(--red);font-style:normal;margin-left:2px}
+.fl small{font-weight:300;text-transform:none;letter-spacing:0;font-family:'IBM Plex Sans',sans-serif}
+input[type=text],textarea,select{width:100%;border:1px solid var(--brd);background:#fff;padding:10px 12px;font-family:'IBM Plex Sans',sans-serif;font-size:.88rem;color:var(--ink);outline:none;transition:border-color .15s}
+input[type=text]:focus,textarea:focus{border-color:var(--ink)}
+textarea{resize:vertical}
+.doc-area{min-height:150px;font-size:.83rem;line-height:1.6}
+/* QUESTION COUNT */
+.qc-row{display:flex;gap:8px;margin-top:4px}
+.qc-btn{flex:1;padding:10px 6px;border:1px solid var(--brd);background:var(--paper);cursor:pointer;font-family:'IBM Plex Mono',monospace;font-size:.85rem;font-weight:500;color:var(--ink);transition:all .15s;text-align:center}
+.qc-btn:hover{background:var(--paper2);border-color:var(--ink)}
+.qc-btn.sel{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.qc-hint{font-family:'IBM Plex Mono',monospace;font-size:.62rem;color:var(--muted);margin-top:6px}
+/* MODEL SELECTOR */
+.model-row{display:flex;gap:8px;margin-top:4px}
+.mo{flex:1;border:1px solid var(--brd);background:var(--paper);padding:11px 13px;cursor:pointer;transition:all .15s}
+.mo:hover{background:var(--paper2);border-color:var(--ink)}
+.mo.sel{background:var(--ink);color:var(--paper)}
+.mo.sel .mo-n{color:var(--paper)}.mo.sel .mo-d{color:#aaa}.mo.sel .mo-b{color:#ff8c7a}
+.mo-b{font-family:'IBM Plex Mono',monospace;font-size:.58rem;letter-spacing:.08em;text-transform:uppercase;margin-bottom:3px;color:var(--red)}
+.mo-n{font-weight:500;font-size:.86rem;margin-bottom:2px;color:var(--ink)}
+.mo-d{font-size:.74rem;color:var(--muted);line-height:1.4}
+/* BUTTONS */
+.br{display:flex;gap:7px;margin-top:14px;flex-wrap:wrap;align-items:center}
+.btn{border:none;padding:9px 17px;font-family:'IBM Plex Mono',monospace;font-size:.68rem;letter-spacing:.05em;text-transform:uppercase;cursor:pointer;transition:all .15s}
+.bp{background:var(--red);color:#fff}.bp:hover{background:var(--rdk)}.bp:disabled{opacity:.4;cursor:not-allowed}
+.bd{background:var(--ink);color:var(--paper)}.bd:hover{opacity:.8}
+.bo{background:transparent;border:1px solid var(--ink);color:var(--ink)}.bo:hover{background:var(--ink);color:var(--paper)}
+.bx{background:transparent;border:1px solid var(--red);color:var(--red)}.bx:hover{background:var(--red);color:#fff}
+.bg{background:var(--gold);color:#fff}.bg:hover{opacity:.85}
+.btn-sm{padding:6px 12px;font-size:.63rem}
+/* SPINNER */
+.sw{display:none;align-items:center;gap:7px;padding:10px 0;font-family:'IBM Plex Mono',monospace;font-size:.68rem;color:var(--muted)}
+.sw.on{display:flex}
+.sp{width:13px;height:13px;border:2px solid var(--brd);border-top-color:var(--red);border-radius:50%;animation:sp .8s linear infinite;flex-shrink:0}
+@keyframes sp{to{transform:rotate(360deg)}}
+/* CARD */
+.card{background:#fff;border:1px solid var(--brd);padding:22px;margin-bottom:14px}
+/* SEC BANNER */
+.sb{background:var(--paper2);border:1px solid var(--brd);border-left:4px solid var(--gold);padding:8px 13px;margin-bottom:14px;font-family:'IBM Plex Mono',monospace;font-size:.67rem;color:var(--gold);letter-spacing:.06em;text-transform:uppercase;display:none}
+.sb.on{display:block}
+/* Q CARD */
+.qm{display:flex;gap:7px;align-items:center;margin-bottom:10px;flex-wrap:wrap}
+.qnum{font-family:'IBM Plex Mono',monospace;font-size:.67rem;background:var(--ink);color:var(--paper);padding:2px 7px}
+.qtag{font-family:'IBM Plex Mono',monospace;font-size:.58rem;color:var(--muted);background:var(--paper2);padding:2px 5px;border:1px solid var(--brd)}
+.qtxt{font-size:.96rem;font-weight:500;line-height:1.55;margin-bottom:15px}
+.opts{display:flex;flex-direction:column;gap:5px;margin-bottom:12px}
+.opt{display:flex;align-items:flex-start;gap:9px;padding:10px 12px;background:var(--paper);border:1px solid var(--brd);cursor:pointer;font-size:.85rem;color:var(--ink);transition:all .15s;width:100%;text-align:left;font-family:'IBM Plex Sans',sans-serif}
+.opt:hover{background:var(--paper2);border-color:var(--ink)}
+.opt.sel{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.opt.sel .ok{background:var(--red);color:#fff;border-color:var(--red)}
+.ok{font-family:'IBM Plex Mono',monospace;font-size:.66rem;font-weight:500;background:var(--paper2);border:1px solid var(--brd);padding:2px 5px;min-width:22px;text-align:center;flex-shrink:0;margin-top:1px}
+.free-sec{border-top:1px dashed var(--brd);padding-top:10px;margin-top:2px}
+.free-lbl{font-family:'IBM Plex Mono',monospace;font-size:.61rem;color:var(--muted);margin-bottom:5px;letter-spacing:.04em;text-transform:uppercase}
+/* FEEDBACK */
+.fb{padding:11px 15px;margin-top:11px;font-size:.84rem;line-height:1.5;border-left:3px solid;display:none}
+.fb.on{display:block}
+.fb.ok{background:var(--ok-bg);border-color:#27ae60;color:var(--ok-c)}
+.fb.wn{background:var(--wn-bg);border-color:#e67e22;color:var(--wn-c)}
+.fb.fl{background:var(--fl-bg);border-color:#e74c3c;color:var(--fl-c)}
+.fb-lbl{font-family:'IBM Plex Mono',monospace;font-size:.57rem;letter-spacing:.1em;text-transform:uppercase;margin-bottom:3px;opacity:.7}
+.chip{font-family:'IBM Plex Mono',monospace;font-size:.57rem;padding:2px 6px;background:var(--fl-bg);border:1px solid #e74c3c;color:#e74c3c;display:inline-block;margin:3px 3px 0 0}
+/* KB */
+.kb{background:var(--paper2);border:1px solid var(--brd);border-left:3px solid var(--gold);padding:11px 13px;margin-bottom:14px;font-size:.79rem;line-height:1.6;color:var(--muted);display:none}
+.kb.on{display:block}
+.kb-t{font-family:'IBM Plex Mono',monospace;font-size:.6rem;color:var(--gold);letter-spacing:.08em;text-transform:uppercase;margin-bottom:5px}
+/* SYNTH */
+.syn{background:#fff;border:2px solid var(--ink);padding:22px;margin-bottom:14px}
+.syn-t{font-family:'Playfair Display',serif;font-size:1.1rem;font-weight:700;margin-bottom:13px;padding-bottom:8px;border-bottom:2px solid var(--ink)}
+.si{display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--brd);font-size:.83rem;line-height:1.5}
+.si:last-child{border-bottom:none}
+.si-ico{flex-shrink:0;font-size:.9rem;margin-top:1px}
+.si-txt strong{display:block;font-weight:500;margin-bottom:2px}
+/* ACTIONS */
+.acts{display:flex;gap:7px;flex-wrap:wrap;margin-top:14px;align-items:center}
+.acts-sep{width:1px;height:26px;background:var(--brd);margin:0 3px}
+/* OUTPUT */
+.oc{background:#fff;border:1px solid var(--brd);padding:20px;margin-top:12px;display:none}
+.oc.on{display:block}
+.oc-t{font-family:'IBM Plex Mono',monospace;font-size:.61rem;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:9px;padding-bottom:6px;border-bottom:1px solid var(--brd)}
+.oc-b{white-space:pre-wrap;font-size:.84rem;line-height:1.75;color:var(--ink);max-height:460px;overflow-y:auto}
+/* LOADING */
+.ldg{min-height:280px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:40px}
+.ldg .sp{width:28px;height:28px;border-width:3px}
+.ldg-msg{font-family:'IBM Plex Mono',monospace;font-size:.78rem;color:var(--muted)}
+.ldg-hint{font-size:.81rem;color:var(--muted);text-align:center;max-width:380px;line-height:1.6}
+/* ERROR */
+.err{display:none;margin-top:11px;padding:10px 13px;background:var(--fl-bg);border-left:3px solid var(--red);font-size:.83rem;color:var(--fl-c)}
+/* TEMPLATE SCREEN */
+.tpl-tabs{display:flex;gap:0;margin-bottom:0;border-bottom:2px solid var(--ink)}
+.tpl-tab{padding:9px 18px;font-family:'IBM Plex Mono',monospace;font-size:.68rem;letter-spacing:.05em;text-transform:uppercase;cursor:pointer;border:none;background:var(--paper2);color:var(--muted);border-right:1px solid var(--brd);transition:all .15s}
+.tpl-tab:hover{background:var(--paper);color:var(--ink)}
+.tpl-tab.sel{background:#fff;color:var(--ink);font-weight:500;border-bottom:2px solid #fff;margin-bottom:-2px}
+.tpl-editor{width:100%;min-height:260px;font-family:'IBM Plex Mono',monospace;font-size:.78rem;line-height:1.65;border:1px solid var(--brd);border-top:none;padding:14px;color:var(--ink);background:#fff;outline:none;resize:vertical}
+.tpl-editor:focus{border-color:var(--ink)}
+.var-bar{display:flex;flex-wrap:wrap;gap:6px;padding:10px 0;align-items:center}
+.var-lbl{font-family:'IBM Plex Mono',monospace;font-size:.6rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-right:4px}
+.var-chip{font-family:'IBM Plex Mono',monospace;font-size:.67rem;padding:3px 8px;background:var(--paper2);border:1px solid var(--brd);color:var(--ink);cursor:pointer;transition:all .15s}
+.var-chip:hover{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.preset-row{display:flex;gap:7px;align-items:center;flex-wrap:wrap;padding:14px 0;border-top:1px solid var(--brd);margin-top:12px}
+.preset-lbl{font-family:'IBM Plex Mono',monospace;font-size:.6rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;flex-shrink:0}
+.preset-input{flex:1;min-width:140px;max-width:220px;border:1px solid var(--brd);padding:7px 10px;font-family:'IBM Plex Sans',sans-serif;font-size:.83rem;background:var(--paper);color:var(--ink);outline:none}
+.preset-input:focus{border-color:var(--ink)}
+select.preset-sel{flex:1;min-width:140px;max-width:220px;border:1px solid var(--brd);padding:7px 10px;font-family:'IBM Plex Sans',sans-serif;font-size:.83rem;background:var(--paper);color:var(--ink);outline:none;cursor:pointer}
+/* RESPONSIVE */
+@media(max-width:640px){
+  .hdr{padding:11px 14px;flex-direction:column;align-items:flex-start;gap:6px}
+  .main,.vc{margin-left:12px;margin-right:12px;padding-left:14px;padding-right:14px}
+  .model-row,.qc-row{flex-direction:column}
+  .tpl-tabs{flex-wrap:wrap}
+}
+</style>
+</head>
+<body>
+
+<div class="hdr">
+  <div>
+    <div class="hdr-t" id="hdrTitle">Vasseur &#8212; Interview Critique</div>
+    <div class="hdr-s" id="hdrSub">M&#201;THODE VASSEUR &#183; G&#201;N&#201;RIQUE</div>
+  </div>
+  <div class="hdr-r">
+    <div class="prog-lbl" id="progLbl">&#8212;</div>
+    <div class="prog-out"><div class="prog-in" id="progIn" style="width:0%"></div></div>
+    <div class="mbadge" id="mbadge"></div>
+  </div>
+</div>
+
+<div style="max-width:820px;width:100%;margin:0 auto">
+  <div class="vc"><div class="vn" id="vName">&#9658; &#201;tienne Vasseur &#183; Journaliste</div>
+  <div class="vt" id="vTxt">Bonjour. Je suis &#201;tienne Vasseur. Donnez-moi un sujet et un document, je pr&#233;pare l&apos;interview.</div></div>
+</div>
+
+<div class="main">
+
+<!-- SCR CONFIG -->
+<div id="scr-config">
+<div class="card" style="padding:26px">
+  <div class="cfg-title">Configurer l&apos;interview</div>
+  <div class="cfg-sub">Vasseur prend connaissance du dossier et g&#233;n&#232;re une s&#233;rie de questions adapt&#233;es &#224; votre sujet.</div>
+  <div class="fg">
+    <label class="fl">Journaliste <em>*</em></label>
+    <input type="text" id="cfgJ" value="&#201;tienne Vasseur, journaliste d&apos;investigation sp&#233;cialis&#233; en conformit&#233; et qualit&#233; industrielle, 15 ans d&apos;exp&#233;rience presse professionnelle. Direct, factuel, incisif. Il cherche les incoh&#233;rences, les promesses intenables et les angles morts. Jamais complaisant.">
+  </div>
+  <div class="fg">
+    <label class="fl">Sujet de l&apos;interview <em>*</em></label>
+    <input type="text" id="cfgS" placeholder="Ex : Lancement de CAP Qualit&#233;, pitch de lev&#233;e de fonds, dossier de conformit&#233;&#8230;">
+  </div>
+  <div class="fg">
+    <label class="fl">Secteur / Contexte</label>
+    <input type="text" id="cfgSec" placeholder="Ex : Agroalimentaire, fintech, sant&#233;, RH, immobilier&#8230;">
+  </div>
+  <div class="fg">
+    <label class="fl">Document &#224; analyser <em>*</em> <small>&#8212; collez le contenu (pitch, BP, dossier, cahier des charges&#8230;)</small></label>
+    <textarea class="doc-area" id="cfgDoc" placeholder="Collez ici le contenu du document &#224; analyser&#8230;"></textarea>
+  </div>
+  <div class="fg">
+    <label class="fl">Nombre de questions</label>
+    <div class="qc-row">
+      <button class="qc-btn" data-n="10" data-hint="~10 min &#183; Survol rapide">10</button>
+      <button class="qc-btn sel" data-n="25" data-hint="~25 min &#183; Analyse solide">25</button>
+      <button class="qc-btn" data-n="50" data-hint="~45 min &#183; Couverture compl&#232;te">50</button>
+      <button class="qc-btn" data-n="100" data-hint="~90 min &#183; Due diligence approfondie">100</button>
+    </div>
+    <div class="qc-hint" id="qcHint">~25 min &#183; Analyse solide</div>
+  </div>
+  <div class="fg">
+    <label class="fl">Mod&#232;le pour la g&#233;n&#233;ration des questions</label>
+    <div class="model-row" id="mRowGen">
+      <div class="mo sel" data-m="claude-sonnet-4-6">
+        <div class="mo-b">Recommand&#233;</div><div class="mo-n">Sonnet 4.6</div>
+        <div class="mo-d">Rapide, efficace. G&#233;n&#232;re de bonnes questions en ~20s.</div>
+      </div>
+      <div class="mo" data-m="claude-opus-4-6">
+        <div class="mo-b">Premium</div><div class="mo-n">Opus 4.6</div>
+        <div class="mo-d">Plus approfondi, questions plus chirurgicales. ~60&#8211;90s.</div>
+      </div>
+    </div>
+  </div>
+  <div class="br">
+    <button class="btn bp" id="btnGen">Lancer la pr&#233;paration &#8594;</button>
+    <button class="btn bo btn-sm" id="btnGoTpl">Configurer les rendus &#9881;</button>
+  </div>
+  <div class="sw" id="spinCfg"><div class="sp"></div>Vasseur analyse le dossier&#8230;</div>
+  <div class="err" id="cfgErr"></div>
+</div>
+</div>
+
+<!-- SCR TEMPLATES -->
+<div id="scr-tpl" style="display:none">
+<div class="card" style="padding:0;overflow:hidden">
+  <div style="padding:20px 22px 16px;border-bottom:1px solid var(--brd)">
+    <div class="cfg-title" style="font-size:1.1rem">Configurer les rendus</div>
+    <div class="cfg-sub" style="margin-bottom:0">Personnalisez les prompts utilis&#233;s par chaque bouton de sortie. Utilisez les variables pour injecter le contexte automatiquement.</div>
+  </div>
+  <div style="padding:20px 22px">
+    <div class="var-bar">
+      <span class="var-lbl">Variables :</span>
+      <span class="var-chip" data-v="journaliste">&#123;&#123;journaliste&#125;&#125;</span>
+      <span class="var-chip" data-v="sujet">&#123;&#123;sujet&#125;&#125;</span>
+      <span class="var-chip" data-v="secteur">&#123;&#123;secteur&#125;&#125;</span>
+      <span class="var-chip" data-v="qa">&#123;&#123;qa&#125;&#125;</span>
+      <span class="var-chip" data-v="flags">&#123;&#123;flags&#125;&#125;</span>
+      <span class="var-chip" data-v="kb">&#123;&#123;kb&#125;&#125;</span>
+    </div>
+    <div class="tpl-tabs">
+      <button class="tpl-tab sel" data-tpl="critique" id="tab-critique">Analyse critique</button>
+      <button class="tpl-tab" data-tpl="article" id="tab-article">Article</button>
+      <button class="tpl-tab" data-tpl="verif" id="tab-verif">V&#233;rification faits</button>
+    </div>
+    <textarea class="tpl-editor" id="tplEditor" rows="12"></textarea>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;flex-wrap:wrap;gap:8px">
+      <button class="btn bo btn-sm" id="btnTplReset">R&#233;initialiser par d&#233;faut</button>
+      <span style="font-family:'IBM Plex Mono',monospace;font-size:.6rem;color:var(--muted)" id="tplSavedMsg"></span>
+    </div>
+    <div class="preset-row">
+      <span class="preset-lbl">Presets :</span>
+      <input type="text" class="preset-input" id="presetName" placeholder="Nom du preset&#8230;">
+      <button class="btn bd btn-sm" id="btnPresetSave">Sauvegarder</button>
+      <select class="preset-sel" id="presetSel"><option value="">&#8212; Charger un preset &#8212;</option></select>
+      <button class="btn bo btn-sm" id="btnPresetLoad">Charger</button>
+      <button class="btn bx btn-sm" id="btnPresetDel">Supprimer</button>
+    </div>
+  </div>
+</div>
+<div class="br"><button class="btn bo" id="btnTplBack">&#8592; Retour</button></div>
+</div>
+
+<!-- SCR LOADING -->
+<div id="scr-loading" style="display:none">
+<div class="card ldg">
+  <div class="sp"></div>
+  <div class="ldg-msg" id="ldgMsg">Vasseur prend connaissance du dossier&#8230;</div>
+  <div class="ldg-hint">Les questions sont g&#233;n&#233;r&#233;es sp&#233;cifiquement pour votre sujet. Comptez 20 &#224; 90 secondes selon le mod&#232;le choisi.</div>
+</div>
+</div>
+
+<!-- SCR INTERVIEW -->
+<div id="scr-interview" style="display:none">
+  <div class="kb" id="kbCard"><div class="kb-t">&#128203; Base de connaissances</div><div id="kbContent"></div></div>
+  <div class="sb" id="secBan"></div>
+  <div class="card">
+    <div class="qm"><span class="qnum" id="qNum">Q1</span><span class="qtag" id="qTag"></span></div>
+    <div class="qtxt" id="qTxt"></div>
+    <div class="opts" id="optsGrid"></div>
+    <div class="free-sec">
+      <div class="free-lbl">D &#8212; R&#233;ponse libre (facultatif ou &#224; la place d&apos;un choix)</div>
+      <textarea id="freeTxt" rows="3" placeholder="Nuancez ou compl&#233;tez votre r&#233;ponse&#8230;"></textarea>
+    </div>
+    <div class="br">
+      <button class="btn bp" id="qSub">Confirmer &#8594;</button>
+      <div class="sw" id="spinQ"><div class="sp"></div>Vasseur note&#8230;</div>
+    </div>
+    <div class="fb" id="fbCard"><div class="fb-lbl" id="fbLbl"></div><div id="fbTxt"></div><div id="fbFlags"></div></div>
+    <div style="margin-top:10px"><button class="btn bd" id="btnNext" style="display:none">Question suivante &#8594;</button></div>
+  </div>
+</div>
+
+<!-- SCR SYNTH -->
+<div id="scr-synth" style="display:none">
+  <div class="syn"><div class="syn-t">Synth&#232;se &#8212; Points critiques d&#233;tect&#233;s</div><div id="synthList"></div><div style="margin-top:9px" id="gFlags"></div></div>
+  <div class="card" style="padding:16px 20px">
+    <div class="free-lbl" style="margin-bottom:9px">Mod&#232;le pour les analyses</div>
+    <div class="model-row" id="mRowOut">
+      <div class="mo sel" data-m="claude-sonnet-4-6"><div class="mo-b">Rapide</div><div class="mo-n">Sonnet 4.6</div><div class="mo-d">Analyse claire et bien structur&#233;e.</div></div>
+      <div class="mo" data-m="claude-opus-4-6"><div class="mo-b">Premium</div><div class="mo-n">Opus 4.6</div><div class="mo-d">Analyse plus dense et plus nuanc&#233;e.</div></div>
+    </div>
+  </div>
+  <div class="acts">
+    <button class="btn bd" id="btnCritique">Analyse critique (Vasseur)</button>
+    <button class="btn bo" id="btnArticle">R&#233;diger l&apos;article</button>
+    <button class="btn bo" id="btnVerif">V&#233;rifier les faits</button>
+    <div class="acts-sep"></div>
+    <button class="btn bo btn-sm" id="btnEditTpl">Modifier les prompts &#9881;</button>
+    <div class="acts-sep"></div>
+    <button class="btn bx btn-sm" id="btnExport">Export Q&amp;A (.md)</button>
+    <button class="btn bo btn-sm" id="btnRestart">&#8592; Nouvelle interview</button>
+  </div>
+  <div class="sw" id="spinOut" style="margin-top:11px"><div class="sp"></div>R&#233;daction en cours&#8230;</div>
+  <div class="oc" id="outCard"><div class="oc-t" id="outTitle"></div><div class="oc-b" id="outBody"></div></div>
+</div>
+
+</div><!-- /main -->
+<script>
+(function() {
+'use strict';
+
+var NL = "\n";
+
+var TPL_DEFAULT = {
+  critique: "Tu es {{journaliste}}. Tu viens de conduire cette interview." + NL + NL +
+    "Sujet : {{sujet}}{{secteur}}" + NL + "{{kb}}" + NL +
+    "Reponses de l interviewe :" + NL + "{{qa}}" + NL + NL +
+    "Flags declenches : {{flags}}" + NL + NL +
+    "Redige une analyse critique de 300 a 600 mots, style journalistique factuel et incisif." + NL +
+    "Structure :" + NL +
+    "1. Jugement d ensemble (2-3 phrases)" + NL +
+    "2. Points solides identifies" + NL +
+    "3. Liste numerotee des reponses a approfondir (n question + pourquoi, 1-2 phrases)" + NL +
+    "4. Conclusion sans concession." + NL + NL +
+    "Ton : direct, factuel. Ni complaisant ni hostile.",
+  article: "Tu es {{journaliste}}, journaliste." + NL + NL +
+    "Sujet : {{sujet}}{{secteur}}" + NL + "{{kb}}" + NL + "Reponses : {{qa}}" + NL + NL +
+    "Redige un article de 600 a 1200 mots :" + NL +
+    "- Titre accrocheur" + NL + "- Chapeau 2-3 phrases" + NL +
+    "- Corps structure avec sous-titres courts" + NL +
+    "- Citations stylisees reconstituees (signale-les comme reconstituees)" + NL +
+    "- Points saillants" + NL + "- Conclusion critique" + NL + NL +
+    "Style : journalisme professionnel, factuel.",
+  verif: "Tu es {{journaliste}}." + NL + NL +
+    "Sujet : {{sujet}}{{secteur}}" + NL + "{{kb}}" + NL + "Reponses : {{qa}}" + NL + NL +
+    "Confrontes 3 a 5 affirmations importantes a la realite factuelle verifiable" + NL +
+    "(reglementations, chiffres officiels, realites du marche, limites techniques)." + NL +
+    "Pour chaque affirmation : cite la reponse, donne le fait reel," + NL +
+    "rends un verdict (confirme / conteste / inverifiable)." + NL +
+    "Precis, bref, factuel."
+};
+
+var ST = {
+  genModel: "claude-sonnet-4-6",
+  outModel: "claude-sonnet-4-6",
+  questionCount: 25,
+  config: { journalist: "", subject: "", sector: "", doc: "" },
+  questions: [],
+  sections: {},
+  knowledgeBase: "",
+  journalistName: "Etienne Vasseur",
+  currentQ: 0,
+  answers: [],
+  flags: [],
+  selOpt: null,
+  tplCurrent: "critique",
+  templates: null,
+  presets: [],
+  tplFrom: "config"
+};
+
+function initTemplates() {
+  ST.templates = {
+    critique: TPL_DEFAULT.critique,
+    article: TPL_DEFAULT.article,
+    verif: TPL_DEFAULT.verif
+  };
+}
+initTemplates();
+
+function el(id) { return document.getElementById(id); }
+
+function showScreen(id) {
+  var screens = ["scr-config","scr-tpl","scr-loading","scr-interview","scr-synth"];
+  screens.forEach(function(s) { el(s).style.display = (s === id) ? "block" : "none"; });
+}
+
+function updProg() {
+  var n = ST.questions.length;
+  var pct = n ? Math.round((ST.currentQ / n) * 100) : 0;
+  el("progIn").style.width = pct + "%";
+  el("progLbl").textContent = ST.currentQ + " / " + n;
+}
+
+function bindModelRow(rowId, stKey) {
+  var row = el(rowId);
+  if (!row) return;
+  row.querySelectorAll(".mo").forEach(function(o) {
+    o.addEventListener("click", function() {
+      row.querySelectorAll(".mo").forEach(function(x) { x.classList.remove("sel"); });
+      o.classList.add("sel");
+      ST[stKey] = o.getAttribute("data-m");
+      el("mbadge").textContent = ST.genModel.indexOf("opus") > -1 ? "OPUS" : "SONNET";
+    });
+  });
+}
+bindModelRow("mRowGen", "genModel");
+bindModelRow("mRowOut", "outModel");
+
+(function initQCount() {
+  var row = document.querySelector(".qc-row");
+  if (!row) return;
+  row.querySelectorAll(".qc-btn").forEach(function(b) {
+    b.addEventListener("click", function() {
+      row.querySelectorAll(".qc-btn").forEach(function(x) { x.classList.remove("sel"); });
+      b.classList.add("sel");
+      ST.questionCount = parseInt(b.getAttribute("data-n"), 10);
+      el("qcHint").textContent = b.getAttribute("data-hint") || "";
+    });
+  });
+})();
+
+function loadPresetsFromStorage() {
+  try { ST.presets = JSON.parse(localStorage.getItem("vasseur_presets") || "[]"); } catch(e) { ST.presets = []; }
+}
+
+function savePresetsToStorage() {
+  try { localStorage.setItem("vasseur_presets", JSON.stringify(ST.presets)); } catch(e) {}
+}
+
+function refreshPresetSelect() {
+  var sel = el("presetSel");
+  sel.innerHTML = "<option value=\"\">\u2014 Charger un preset \u2014</option>";
+  ST.presets.forEach(function(p) {
+    var o = document.createElement("option");
+    o.value = p.name;
+    o.textContent = p.name;
+    sel.appendChild(o);
+  });
+}
+
+loadPresetsFromStorage();
+
+function openTemplateScreen(from) {
+  ST.tplFrom = from || "config";
+  ST.tplCurrent = "critique";
+  refreshTemplateEditor();
+  refreshPresetSelect();
+  document.querySelectorAll(".tpl-tab").forEach(function(t) {
+    t.classList.toggle("sel", t.getAttribute("data-tpl") === "critique");
+  });
+  showScreen("scr-tpl");
+  el("vTxt").textContent = "Configurez les prompts. Les variables {{qa}}, {{journaliste}}, {{sujet}}, {{secteur}}, {{flags}}, {{kb}} seront remplacees automatiquement.";
+}
+
+function refreshTemplateEditor() {
+  el("tplEditor").value = ST.templates[ST.tplCurrent] || "";
+}
+
+document.querySelectorAll(".tpl-tab").forEach(function(tab) {
+  tab.addEventListener("click", function() {
+    ST.templates[ST.tplCurrent] = el("tplEditor").value;
+    ST.tplCurrent = tab.getAttribute("data-tpl");
+    document.querySelectorAll(".tpl-tab").forEach(function(t) { t.classList.remove("sel"); });
+    tab.classList.add("sel");
+    refreshTemplateEditor();
+  });
+});
+
+document.querySelectorAll(".var-chip").forEach(function(chip) {
+  chip.addEventListener("click", function() {
+    var v = "{{" + chip.getAttribute("data-v") + "}}";
+    var ta = el("tplEditor");
+    var s = ta.selectionStart, e = ta.selectionEnd;
+    ta.value = ta.value.substring(0, s) + v + ta.value.substring(e);
+    ta.selectionStart = ta.selectionEnd = s + v.length;
+    ta.focus();
+  });
+});
+
+el("btnTplReset").addEventListener("click", function() {
+  ST.templates[ST.tplCurrent] = TPL_DEFAULT[ST.tplCurrent];
+  refreshTemplateEditor();
+  flashMsg("tplSavedMsg", "Remis par defaut.");
+});
+
+el("btnPresetSave").addEventListener("click", function() {
+  ST.templates[ST.tplCurrent] = el("tplEditor").value;
+  var name = el("presetName").value.trim();
+  if (!name) { alert("Donnez un nom au preset."); return; }
+  var idx = -1;
+  ST.presets.forEach(function(p, i) { if (p.name === name) idx = i; });
+  var preset = { name: name, templates: { critique: ST.templates.critique, article: ST.templates.article, verif: ST.templates.verif } };
+  if (idx >= 0) ST.presets[idx] = preset; else ST.presets.push(preset);
+  savePresetsToStorage();
+  refreshPresetSelect();
+  flashMsg("tplSavedMsg", "Preset \"" + name + "\" sauvegarde.");
+});
+
+el("btnPresetLoad").addEventListener("click", function() {
+  var name = el("presetSel").value;
+  if (!name) { alert("Selectionnez un preset."); return; }
+  var preset = null;
+  ST.presets.forEach(function(p) { if (p.name === name) preset = p; });
+  if (!preset) return;
+  ST.templates = {
+    critique: preset.templates.critique || TPL_DEFAULT.critique,
+    article: preset.templates.article || TPL_DEFAULT.article,
+    verif: preset.templates.verif || TPL_DEFAULT.verif
+  };
+  refreshTemplateEditor();
+  flashMsg("tplSavedMsg", "Preset \"" + name + "\" charge.");
+});
+
+el("btnPresetDel").addEventListener("click", function() {
+  var name = el("presetSel").value;
+  if (!name) { alert("Selectionnez un preset."); return; }
+  if (!confirm("Supprimer le preset \"" + name + "\" ?")) return;
+  ST.presets = ST.presets.filter(function(p) { return p.name !== name; });
+  savePresetsToStorage();
+  refreshPresetSelect();
+  flashMsg("tplSavedMsg", "Supprime.");
+});
+
+el("btnTplBack").addEventListener("click", function() {
+  ST.templates[ST.tplCurrent] = el("tplEditor").value;
+  showScreen(ST.tplFrom === "synth" ? "scr-synth" : "scr-config");
+});
+
+el("btnGoTpl").addEventListener("click", function() { openTemplateScreen("config"); });
+el("btnEditTpl").addEventListener("click", function() { openTemplateScreen("synth"); });
+
+function flashMsg(id, msg) {
+  var el2 = el(id);
+  el2.textContent = msg;
+  setTimeout(function() { el2.textContent = ""; }, 2500);
+}
+
+function showCfgErr(msg) { el("cfgErr").textContent = msg; el("cfgErr").style.display = "block"; }
+
+el("btnGen").addEventListener("click", function() {
+  el("cfgErr").style.display = "none";
+  var j = el("cfgJ").value.trim(), s = el("cfgS").value.trim(), sec = el("cfgSec").value.trim(), d = el("cfgDoc").value.trim();
+  if (!s) { showCfgErr("Le sujet est requis."); return; }
+  if (!d) { showCfgErr("Le document est requis."); return; }
+  ST.config = { journalist: j, subject: s, sector: sec, doc: d };
+  el("hdrTitle").textContent = s.length > 48 ? s.substring(0, 48) + "\u2026" : s;
+  el("hdrSub").textContent = "VASSEUR \u00b7 " + (sec || "INTERVIEW CRITIQUE").toUpperCase();
+  el("mbadge").textContent = ST.genModel.indexOf("opus") > -1 ? "OPUS" : "SONNET";
+  el("mbadge").style.display = "block";
+  generateQuestions(j, s, sec, d);
+});
+
+var ldgMsgs = [
+  "Vasseur analyse le dossier\u2026",
+  "Identification des angles morts\u2026",
+  "Preparation des questions letales\u2026",
+  "Verification des incoherences\u2026",
+  "Calibration du niveau d\u2019exigence\u2026"
+];
+var ldgTimer;
+
+function startLdg() {
+  var i = 0;
+  el("ldgMsg").textContent = ldgMsgs[0];
+  ldgTimer = setInterval(function() { i = (i + 1) % ldgMsgs.length; el("ldgMsg").textContent = ldgMsgs[i]; }, 3500);
+}
+
+async function generateQuestions(journalist, subject, sector, doc) {
+  showScreen("scr-loading");
+  startLdg();
+  var n = ST.questionCount;
+  var lines = [
+    "Tu es un generateur de questions d interview critique. Tu incarnes ce journaliste :",
+    "",
+    journalist,
+    "",
+    "SUJET : " + subject,
+    sector ? "SECTEUR : " + sector : "",
+    "",
+    "DOCUMENT :",
+    doc.substring(0, 12000),
+    "",
+    "REGLES :",
+    "1. Organise en 5-6 sections thematiques, de la plus letale a la moins letale",
+    "2. Genere exactement " + n + " questions au total, reparties entre les sections",
+    "3. Chaque question : 3 choix A/B/C. Option D libre disponible.",
+    "4. Chaque option peut avoir un flag (string snake_case identifiant le risque, ou null)",
+    "5. Chaque option a un feedback du journaliste (direct, factuel, incisif, jamais complaisant)",
+    "6. Identifie : promesses invérifiables, risques juridiques, angles morts techniques, concurrence, viabilite",
+    "7. La base de connaissances liste les faits verifies pertinents",
+    "",
+    "RETOURNE UNIQUEMENT du JSON valide, sans balises markdown, sans texte avant ou apres :",
+    "{",
+    "  \"journalist_name\": \"Nom court\",",
+    "  \"journalist_intro\": \"Phrase d ouverture specifique au sujet\",",
+    "  \"knowledge_base\": \"Faits cles a verifier (tirets)\",",
+    "  \"sections\": [{\"id\":\"A\",\"label\":\"Titre\",\"intro\":\"Intro section\"}],",
+    "  \"questions\": [{\"id\":1,\"sec\":\"A\",\"tag\":\"#tag\",\"q\":\"Question ?\",\"opts\":[\"A\",\"B\",\"C\"],\"flags\":{\"A\":\"risque_x\",\"B\":null,\"C\":null},\"fb\":{\"A\":\"Feedback A\",\"B\":\"Feedback B\",\"C\":\"Feedback C\"}}]",
+    "}"
+  ];
+  var prompt = lines.filter(function(l) { return l !== null && l !== undefined; }).join("\n");
+
+  try {
+    var resp = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: ST.genModel, max_tokens: 8000, messages: [{ role: "user", content: prompt }] })
+    });
+    var data = await resp.json();
+    if (!resp.ok) throw new Error(data.error ? data.error.message : "API " + resp.status);
+    var raw = data.content.map(function(c) { return c.text || ""; }).join("");
+    raw = raw.replace(/^```json\s*/i,"").replace(/^```\s*/i,"").replace(/```\s*$/i,"").trim();
+    var parsed = JSON.parse(raw);
+    if (!parsed.questions || !parsed.questions.length) throw new Error("Pas de questions generees.");
+    clearInterval(ldgTimer);
+    ST.questions = parsed.questions;
+    ST.knowledgeBase = parsed.knowledge_base || "";
+    ST.journalistName = parsed.journalist_name || "Etienne Vasseur";
+    ST.sections = {};
+    (parsed.sections || []).forEach(function(s) { ST.sections[s.id] = s; });
+    el("vName").textContent = "\u25ba " + ST.journalistName + " \u00b7 Journaliste";
+    el("vTxt").textContent = parsed.journalist_intro || "On va aller droit au but.";
+    if (ST.knowledgeBase) { el("kbContent").textContent = ST.knowledgeBase; el("kbCard").className = "kb on"; }
+    showScreen("scr-interview");
+    startIntro();
+  } catch(e) {
+    clearInterval(ldgTimer);
+    showScreen("scr-config");
+    showCfgErr("Erreur : " + e.message);
+  }
+}
+
+function startIntro() {
+  el("qNum").textContent = "INTRO";
+  el("qTag").textContent = "#presentation";
+  el("qTxt").textContent = "Presentez-vous : qui etes-vous, quel est votre role sur ce projet, et quelle est votre legitimite sur le sujet ?";
+  el("optsGrid").innerHTML = "";
+  el("freeTxt").value = "";
+  el("fbCard").className = "fb";
+  el("fbFlags").innerHTML = "";
+  el("btnNext").style.display = "none";
+  el("secBan").className = "sb";
+  ST.selOpt = null;
+  el("qSub").disabled = false;
+  el("qSub").onclick = submitIntro;
+  el("progLbl").textContent = "Intro";
+}
+
+function submitIntro() {
+  var free = el("freeTxt").value.trim();
+  if (!free) { alert("Presentez-vous avant de continuer."); return; }
+  ST.answers = [{ id: 0, sec: "INTRO", tag: "#presentation", question: "Presentation", opts: [], choice: "D", free: free, ts: new Date().toISOString(), flags: [] }];
+  el("qSub").onclick = submitAns;
+  loadQ(0);
+}
+
+function loadQ(idx) {
+  ST.currentQ = idx;
+  ST.selOpt = null;
+  if (idx >= ST.questions.length) { showSynth(); return; }
+  var q = ST.questions[idx];
+  var prev = idx > 0 ? ST.questions[idx - 1].sec : null;
+  var ban = el("secBan");
+  if (q.sec !== prev && ST.sections[q.sec]) {
+    ban.textContent = ST.sections[q.sec].label;
+    ban.className = "sb on";
+    el("vTxt").textContent = ST.sections[q.sec].intro || "";
+  } else { ban.className = "sb"; }
+  el("qNum").textContent = "Q" + q.id;
+  el("qTag").textContent = q.tag || "";
+  el("qTxt").textContent = q.q;
+  var g = el("optsGrid");
+  g.innerHTML = "";
+  (q.opts || []).forEach(function(o, i) {
+    var k = ["A","B","C"][i];
+    var b = document.createElement("button");
+    b.className = "opt";
+    b.innerHTML = "<span class=\"ok\">" + k + "</span>" + o;
+    b.addEventListener("click", function() {
+      g.querySelectorAll(".opt").forEach(function(x) { x.classList.remove("sel"); });
+      b.classList.add("sel");
+      ST.selOpt = k;
+    });
+    g.appendChild(b);
+  });
+  el("freeTxt").value = "";
+  el("fbCard").className = "fb";
+  el("fbFlags").innerHTML = "";
+  el("btnNext").style.display = "none";
+  el("qSub").disabled = false;
+  updProg();
+}
+
+function submitAns() {
+  var q = ST.questions[ST.currentQ];
+  var free = el("freeTxt").value.trim();
+  var ch = ST.selOpt;
+  if (!ch && !free) { alert("Choisissez une option ou repondez librement."); return; }
+  el("qSub").disabled = true;
+  var ans = { id: q.id, sec: q.sec, tag: q.tag, question: q.q, opts: q.opts || [], choice: ch || "D", free: free, ts: new Date().toISOString(), flags: [] };
+  var flgs = [];
+  if (ch && q.flags && q.flags[ch]) { flgs.push(q.flags[ch]); ans.flags.push(q.flags[ch]); if (ST.flags.indexOf(q.flags[ch]) < 0) ST.flags.push(q.flags[ch]); }
+  var fbMsg = null, fbType = "ok";
+  if (ch && q.fb && q.fb[ch]) { fbMsg = q.fb[ch]; fbType = flgs.length ? "fl" : "ok"; }
+  else if (free && !ch) { fbMsg = "Reponse libre enregistree."; fbType = "wn"; }
+  if (!fbMsg) { fbMsg = "Acte."; fbType = "ok"; }
+  ST.answers.push(ans);
+  var fc = el("fbCard");
+  fc.className = "fb on " + fbType;
+  el("fbLbl").textContent = fbType === "ok" ? "Acte." : fbType === "wn" ? "Note" : "Risque detecte";
+  el("fbTxt").textContent = fbMsg;
+  var ff = el("fbFlags"); ff.innerHTML = "";
+  flgs.forEach(function(f) { var s = document.createElement("span"); s.className = "chip"; s.textContent = f.replace(/_/g," "); ff.appendChild(s); });
+  el("btnNext").style.display = "inline-block";
+}
+
+el("btnNext").addEventListener("click", function() { loadQ(ST.currentQ + 1); });
+el("qSub").addEventListener("click", submitAns);
+
+function showSynth() {
+  showScreen("scr-synth");
+  el("vTxt").textContent = "C\u2019est termin\u00e9. Voici ce que j\u2019ai retenu.";
+  var riskKeys = ["legal","rgpd","credibilite","zero_client","solo","chiffres","signature","vendor","positionnement","promesse"];
+  var crit = ST.answers.filter(function(a) {
+    return a.flags.some(function(f) { return riskKeys.some(function(k) { return f.toLowerCase().indexOf(k) > -1; }); });
+  }).slice(0, 8);
+  var sl = el("synthList"); sl.innerHTML = "";
+  if (!crit.length) {
+    sl.innerHTML = "<div class=\"si\"><span class=\"si-ico\">\u2713</span><div>Aucun risque critique majeur d\u00e9tect\u00e9. Consultez l\u2019analyse d\u00e9taill\u00e9e.</div></div>";
+  } else {
+    crit.forEach(function(a) {
+      var d = document.createElement("div"); d.className = "si";
+      var ico = a.flags.some(function(f) { return f.indexOf("legal") > -1 || f.indexOf("rgpd") > -1; }) ? "\uD83D\uDEA9" : "\u26A0";
+      d.innerHTML = "<span class=\"si-ico\">" + ico + "</span><div class=\"si-txt\"><strong>Q" + a.id + " \u2014 " + a.tag + "</strong>" + a.question + "</div>";
+      sl.appendChild(d);
+    });
+  }
+  var gf = el("gFlags"); gf.innerHTML = "";
+  ST.flags.forEach(function(f) { var s = document.createElement("span"); s.className = "chip"; s.textContent = f.replace(/_/g," "); gf.appendChild(s); });
+}
+
+function buildQA() {
+  return ST.answers.map(function(a) {
+    var r = a.choice !== "D" ? ("[" + a.choice + "] " + (a.opts[["A","B","C"].indexOf(a.choice)] || a.choice)) : "";
+    if (a.free) r += (r ? " + " : "") + "Reponse libre : " + a.free;
+    return "Q" + a.id + " (" + a.tag + "): " + a.question + "\n-> " + r + (a.flags.length ? " [FLAGS: " + a.flags.join(", ") + "]" : "");
+  }).join("\n\n");
+}
+
+function renderTpl(tpl, qa, flags) {
+  var kb = ST.knowledgeBase ? "Base de connaissances :\n" + ST.knowledgeBase : "";
+  var sec = ST.config.sector ? " (" + ST.config.sector + ")" : "";
+  return tpl
+    .replace(/\{\{journaliste\}\}/g, ST.journalistName + " \u2014 " + (ST.config.journalist || ""))
+    .replace(/\{\{sujet\}\}/g, ST.config.subject || "")
+    .replace(/\{\{secteur\}\}/g, sec)
+    .replace(/\{\{qa\}\}/g, qa)
+    .replace(/\{\{flags\}\}/g, flags || "aucun")
+    .replace(/\{\{kb\}\}/g, kb);
+}
+
+async function genOutput(type) {
+  if (el("tplEditor")) ST.templates[ST.tplCurrent] = el("tplEditor").value;
+  var sp = el("spinOut"), oc = el("outCard"), ot = el("outTitle"), ob = el("outBody");
+  sp.className = "sw on"; oc.className = "oc";
+  var qa = buildQA(), flags = ST.flags.join(", ");
+  var tpl = ST.templates[type] || TPL_DEFAULT[type];
+  var prompt = renderTpl(tpl, qa, flags);
+  var titles = { critique: "ANALYSE CRITIQUE", article: "ARTICLE", verif: "VERIFICATION FACTUELLE" };
+  var mLabel = ST.outModel.indexOf("opus") > -1 ? "OPUS 4.6" : "SONNET 4.6";
+  try {
+    var r = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: ST.outModel, max_tokens: 2000, messages: [{ role: "user", content: prompt }] })
+    });
+    var d = await r.json();
+    if (!r.ok) throw new Error(d.error ? d.error.message : "Erreur API");
+    var txt = d.content.map(function(c) { return c.text || ""; }).join("");
+    sp.className = "sw"; ot.textContent = (titles[type] || type.toUpperCase()) + " [" + mLabel + "]"; ob.textContent = txt; oc.className = "oc on";
+  } catch(e) { sp.className = "sw"; ot.textContent = "Erreur"; ob.textContent = e.message; oc.className = "oc on"; }
+}
+
+el("btnCritique").addEventListener("click", function() { genOutput("critique"); });
+el("btnArticle").addEventListener("click", function() { genOutput("article"); });
+el("btnVerif").addEventListener("click", function() { genOutput("verif"); });
+
+el("btnExport").addEventListener("click", function() {
+  var lines = [
+    "# Interview \u2014 " + (ST.config.subject || "Sans titre"),
+    "**Journaliste** : " + ST.journalistName,
+    "**Date** : " + new Date().toLocaleDateString("fr-FR"),
+    "**Questions** : " + ST.questionCount + " | **Modele** : " + ST.genModel,
+    "", "## Presentation",
+    (ST.answers[0] && ST.answers[0].id === 0 ? ST.answers[0].free : "\u2014"),
+    "", "## Reponses", ""
+  ];
+  var curS = "";
+  ST.answers.forEach(function(a) {
+    if (a.id === 0) return;
+    if (a.sec !== curS) { curS = a.sec; var sec = ST.sections[a.sec]; lines.push("### Section " + a.sec + (sec ? " \u2014 " + sec.label : ""), ""); }
+    lines.push("**Q" + a.id + "** `" + a.tag + "` \u2014 " + a.question);
+    if (a.choice !== "D") lines.push("- Choix : **" + a.choice + "** \u2014 " + (a.opts[["A","B","C"].indexOf(a.choice)] || ""));
+    if (a.free) lines.push("- Reponse libre : " + a.free);
+    if (a.flags.length) lines.push("- Flags : " + a.flags.join(", "));
+    lines.push("- *" + a.ts + "*", "");
+  });
+  lines.push("## Flags globaux", ST.flags.map(function(f) { return "- " + f; }).join("\n"));
+  var blob = new Blob([lines.join("\n")], { type: "text/markdown" });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement("a"); a.href = url; a.download = "interview-" + new Date().toISOString().slice(0,10) + ".md"; a.click();
+});
+
+el("btnRestart").addEventListener("click", function() {
+  ST.questions = []; ST.answers = []; ST.flags = []; ST.currentQ = 0; ST.selOpt = null;
+  initTemplates();
+  el("kbCard").className = "kb";
+  el("hdrTitle").textContent = "Vasseur \u2014 Interview Critique";
+  el("hdrSub").textContent = "M\u00c9THODE VASSEUR \u00b7 G\u00c9N\u00c9RIQUE";
+  el("mbadge").style.display = "none";
+  el("vTxt").textContent = "Bonjour. Je suis \u00c9tienne Vasseur. Donnez-moi un sujet et un document, je pr\u00e9pare l\u2019interview.";
+  el("outCard").className = "oc";
+  el("progIn").style.width = "0%";
+  el("progLbl").textContent = "\u2014";
+  showScreen("scr-config");
+});
+
+showScreen("scr-config");
+
+})();
+</script>
+</body>
+</html>

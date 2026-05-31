@@ -1,0 +1,42 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Google Fonts chargées via index.html */
+
+:root {
+  /* RGB triplets pour Tailwind opacity modifier */
+  --vs-ink:      26 20 16;
+  --vs-paper:    245 240 232;
+  --vs-paper2:   237 230 214;
+  --vs-red:      192 57 43;
+  --vs-red-dark: 146 43 33;
+  --vs-gold:     183 134 10;
+  --vs-muted:    122 112 96;
+  --vs-border:   200 189 168;
+
+  /* Hex pour les couleurs de feedback (jamais utilisées avec transparence) */
+  --vs-ok-bg:   #f2faf4;
+  --vs-ok-fg:   #1e6b3e;
+  --vs-warn-bg: #fffbf0;
+  --vs-warn-fg: #7d4e0f;
+  --vs-flag-bg: #fdf3f2;
+  --vs-flag-fg: #8b1a1a;
+}
+
+@layer base {
+  body {
+    font-family: 'IBM Plex Sans', sans-serif;
+    background-color: rgb(var(--vs-paper));
+    color: rgb(var(--vs-ink));
+    min-height: 100vh;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  textarea {
+    resize: vertical;
+  }
+}

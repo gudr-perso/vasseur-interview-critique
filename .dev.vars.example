@@ -1,0 +1,5 @@
+# Copiez ce fichier en .dev.vars et ajoutez votre clé API Anthropic
+# Ce fichier est utilisé par wrangler pages dev pour injecter les secrets localement
+# Ne jamais committer .dev.vars (il est dans .gitignore)
+
+ANTHROPIC_API_KEY=sk-ant-votre-cle-ici
