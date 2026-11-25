@@ -76,11 +76,14 @@ describe.each(GENERATIONS)('protocole, via le client officiel — $nom', ({ opti
     const client = await connecter(`https://exemple.test/mcp/${JETON}`, {}, r => parJeton(contexte(r, JETON)))
     const { tools } = await client.listTools()
     expect(tools.map(t => t.name)).toContain('creer_projet')
-    expect(tools).toHaveLength(13)
+    expect(tools).toHaveLength(19)
     expect(tools.find(t => t.name === 'lire_projet')?.inputSchema.required).toEqual(['projet_id'])
     expect(tools.find(t => t.name === 'creer_projet')?.inputSchema.required).toEqual(['titre', 'type_demande'])
     expect(tools.filter(t => t.annotations?.readOnlyHint).map(t => t.name).sort()).toEqual(
-      ['lire_document', 'lire_guide', 'lire_logiciel', 'lire_projet', 'lire_questionnaire', 'lister_logiciels', 'lister_projets'],
+      [
+        'lire_analyse', 'lire_document', 'lire_entretien', 'lire_guide', 'lire_logiciel', 'lire_projet', 'lire_questionnaire',
+        'lire_reponses', 'lister_analyses', 'lister_logiciels', 'lister_projets', 'lister_repondants',
+      ],
     )
     for (const outil of tools) expect(outil.annotations?.readOnlyHint, outil.name).toBeTypeOf('boolean')
 
@@ -111,7 +114,7 @@ describe.each(GENERATIONS)('protocole, via le client officiel — $nom', ({ opti
     expect(invalide.isError).toBe(true)
     expect((invalide.content as { text: string }[])[0].text).toContain('type_demande')
 
-    expect((await client.listTools()).tools).toHaveLength(13)
+    expect((await client.listTools()).tools).toHaveLength(19)
     await client.close()
   })
 

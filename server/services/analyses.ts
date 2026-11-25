@@ -2,6 +2,7 @@ import { LIMITES_ANALYSE, TYPES_ANALYSE, type Analyse, type AnalyseResume, type 
 import { ErreurMetier } from '../erreurs'
 import { maintenantIso, nouvelId } from '../ids'
 import { estInvisible, verifierLongueur } from './limites'
+import { pseudonymesDuProjet } from './corpus'
 import { lireProjet } from './projets'
 
 const SOURCE_MAX = 100
@@ -115,6 +116,14 @@ export async function listerAnalyses(db: D1Database, filtre: FiltreAnalyses): Pr
     ...resume,
     portee: libellePortee({ ...resume, public_vise, prenom, nom }),
   }))
+}
+
+/** Comme `listerAnalyses`, pour une IA : la portée d'une fiche nomme le répondant par son pseudonyme. */
+export async function listerAnalysesPseudonymisees(db: D1Database, filtre: FiltreAnalyses): Promise<AnalyseResume[]> {
+  const [analyses, pseudonymes] = await Promise.all([listerAnalyses(db, filtre), pseudonymesDuProjet(db, filtre.projet_id)])
+  return analyses.map(a => a.repondant_id
+    ? { ...a, portee: pseudonymes.get(a.repondant_id) ?? 'Répondant sans entretien' }
+    : a)
 }
 
 export async function lireAnalyse(db: D1Database, id: string): Promise<Analyse> {
