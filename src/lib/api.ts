@@ -1,6 +1,6 @@
 import type { AppConfig, GeneratedInterview, ModelId } from '../types'
 
-const API_URL = import.meta.env.VITE_API_URL
+const API_URL = '/api/messages'
 
 function stripMarkdownFences(text: string): string {
   return text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim()
@@ -16,11 +16,20 @@ async function callAnthropic(payload: {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   })
+  if (res.status === 401) {
+    throw new Error('Session expirée. Rechargez la page pour vous reconnecter.')
+  }
   if (!res.ok) {
     const err = await res.json().catch(() => ({})) as { error?: { message?: string } }
     throw new Error(err?.error?.message ?? `Erreur API ${res.status}`)
   }
-  const data = await res.json() as { content: { text?: string }[] }
+  const data = await res.json() as { content: { text?: string }[]; stop_reason?: string }
+  if (data.stop_reason === 'refusal') {
+    throw new Error('Le modèle a refusé de répondre à cette demande.')
+  }
+  if (data.stop_reason === 'max_tokens') {
+    throw new Error('Réponse tronquée : réduisez le nombre de questions ou changez de modèle.')
+  }
   return data.content.map(c => c.text ?? '').join('')
 }
 
@@ -61,7 +70,7 @@ export async function generateQuestions(config: AppConfig): Promise<GeneratedInt
   const prompt = buildGenerationPrompt(config)
   const raw = await callAnthropic({
     model: config.genModel,
-    max_tokens: 8000,
+    max_tokens: 16000,
     messages: [{ role: 'user', content: prompt }],
   })
   const cleaned = stripMarkdownFences(raw)
@@ -83,7 +92,7 @@ export async function generateOutput(
 ): Promise<string> {
   return callAnthropic({
     model,
-    max_tokens: 2000,
+    max_tokens: 8000,
     messages: [{ role: 'user', content: prompt }],
   })
 }

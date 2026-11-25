@@ -139,7 +139,6 @@ export function ConfigScreen() {
           <ModelSelector
             value={config.genModel}
             onChange={m => setConfig({ genModel: m })}
-            variant="gen"
           />
         </div>
 

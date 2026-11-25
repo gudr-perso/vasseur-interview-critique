@@ -1,4 +1,5 @@
 import type { ModelId } from '../../types'
+import { libelleCourt } from '../../lib/modeles'
 
 interface HeaderProps {
   subject?: string
@@ -13,7 +14,6 @@ export function Header({ subject, currentQ = 0, totalQ = 0, model, showProgress 
   const title = subject
     ? (subject.length > 48 ? subject.substring(0, 48) + '…' : subject)
     : 'Vasseur — Interview Critique'
-  const isOpus = model?.includes('opus')
 
   return (
     <header className="bg-ink text-paper px-6 py-3.5 flex items-center justify-between border-b-[3px] border-red sticky top-0 z-50">
@@ -39,7 +39,7 @@ export function Header({ subject, currentQ = 0, totalQ = 0, model, showProgress 
             </div>
             {model && (
               <div className="font-mono text-[0.58rem] bg-red text-white px-1.5 py-0.5 uppercase tracking-wider">
-                {isOpus ? 'OPUS' : 'SONNET'}
+                {libelleCourt(model)}
               </div>
             )}
           </>

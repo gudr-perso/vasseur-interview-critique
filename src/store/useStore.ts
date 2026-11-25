@@ -4,6 +4,7 @@ import type {
   TemplateKey, Templates, ModelId, Preset, FeedbackType,
 } from '../types'
 import { DEFAULT_TEMPLATES, getDefaultTemplate } from '../lib/templates'
+import { DEFAUTS } from '../../shared/modeles'
 
 const DEFAULT_JOURNALIST = "Étienne Vasseur, journaliste d'investigation spécialisé en conformité et qualité industrielle, 15 ans d'expérience presse professionnelle. Direct, factuel, incisif. Il cherche les incohérences, les promesses intenables et les angles morts. Jamais complaisant."
 
@@ -13,7 +14,7 @@ const DEFAULT_CONFIG: AppConfig = {
   sector: '',
   doc: '',
   questionCount: 25,
-  genModel: 'claude-sonnet-4-6',
+  genModel: DEFAUTS.cadrage,
 }
 
 export interface FeedbackState {
@@ -184,7 +185,7 @@ export const useStore = create<AppState>((set, get) => ({
   loadPreset: (preset) => set({ templates: { ...preset.templates } }),
 
   // Output model
-  outModel: 'claude-sonnet-4-6',
+  outModel: DEFAUTS.analyse,
   setOutModel: (m) => set({ outModel: m }),
 
   // Reset
@@ -197,6 +198,6 @@ export const useStore = create<AppState>((set, get) => ({
     globalFlags: [],
     selectedOption: null,
     templates: { ...DEFAULT_TEMPLATES },
-    outModel: 'claude-sonnet-4-6',
+    outModel: DEFAUTS.analyse,
   }),
 }))

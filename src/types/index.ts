@@ -1,4 +1,5 @@
-export type ModelId = 'claude-sonnet-4-6' | 'claude-opus-4-6'
+/** Identifiant d'un modèle du catalogue servi par /api/admin/modeles. */
+export type ModelId = string
 
 export interface AppConfig {
   journalist: string

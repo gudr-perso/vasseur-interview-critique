@@ -10,6 +10,7 @@ import { Button } from '../components/ui/Button'
 import { Chip } from '../components/ui/Chip'
 import { ModelSelector } from '../components/ui/ModelSelector'
 import { Spinner } from '../components/ui/Spinner'
+import { libelleCourt } from '../lib/modeles'
 import type { TemplateKey, Answer } from '../types'
 
 const CRITICAL_KEYWORDS = [
@@ -99,7 +100,7 @@ export function SynthesisScreen() {
       article: 'ARTICLE',
       verif: 'VÉRIFICATION FACTUELLE',
     }
-    const modelLabel = outModel.includes('opus') ? 'OPUS 4.6' : 'SONNET 4.6'
+    const modelLabel = libelleCourt(outModel)
     setGenerating(true)
     setOutputText('')
     setOutputTitle(`${labels[type]} [${modelLabel}]`)
@@ -189,7 +190,7 @@ export function SynthesisScreen() {
           <div className="font-mono text-[0.61rem] uppercase tracking-wider text-muted mb-2">
             Modèle pour les analyses
           </div>
-          <ModelSelector value={outModel} onChange={setOutModel} variant="out" />
+          <ModelSelector value={outModel} onChange={setOutModel} />
         </div>
 
         {/* Actions */}
