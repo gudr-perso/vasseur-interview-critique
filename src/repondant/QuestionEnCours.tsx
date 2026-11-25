@@ -105,10 +105,14 @@ function FormulaireReponse({ jeton, question, onEtat, onRelire }: FormulaireRepo
           <span id={`${id}-titre`}>{question.libelle}</span>
         </TitreEtape>
 
-        <Saisie id={id} question={question} brouillon={brouillon} onChange={changer} />
+        {/* Pendant l'envoi, la saisie est figée : ce qui part est ce qui est affiché. */}
+        <Saisie id={id} question={question} brouillon={brouillon} onChange={changer} disabled={enCours} />
 
         {aCommentaire(question.type) && (
-          <Commentaire id={`${id}-commentaire`} valeur={brouillon.commentaire} onChange={commentaire => changer({ commentaire })} />
+          <Commentaire
+            id={`${id}-commentaire`} valeur={brouillon.commentaire} onChange={commentaire => changer({ commentaire })}
+            disabled={enCours}
+          />
         )}
 
         <div className="mt-7 space-y-3">
@@ -128,27 +132,32 @@ interface SaisieProps {
   question: QuestionPublique
   brouillon: Brouillon
   onChange: (modif: Partial<Brouillon>) => void
+  disabled: boolean
 }
 
-function Saisie({ id, question, brouillon, onChange }: SaisieProps) {
+function Saisie({ id, question, brouillon, onChange, disabled }: SaisieProps) {
   switch (question.type) {
     case 'choix_unique':
     case 'choix_multiple':
       return (
         <SaisieChoix
           nom={id} libelle={question.libelle} options={question.options ?? []} multiple={question.type === 'choix_multiple'}
-          choix={brouillon.choix} onChange={choix => onChange({ choix })}
+          choix={brouillon.choix} onChange={choix => onChange({ choix })} disabled={disabled}
         />
       )
     case 'echelle':
-      return <SaisieEchelle nom={id} libelle={question.libelle} note={brouillon.note} onChange={note => onChange({ note })} />
+      return (
+        <SaisieEchelle
+          nom={id} libelle={question.libelle} note={brouillon.note} onChange={note => onChange({ note })} disabled={disabled}
+        />
+      )
     case 'texte':
     case 'relance':
     case 'ouverte':
       return (
         <ZoneTexte
           id={`${id}-texte`} valeur={brouillon.texte} onChange={texte => onChange({ texte })} lignes={5}
-          libellePar={`${id}-titre`}
+          libellePar={`${id}-titre`} disabled={disabled}
         />
       )
   }

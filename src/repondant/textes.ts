@@ -55,6 +55,13 @@ export const TEXTES = {
     terminer: 'Terminer l\'entretien',
     persiste: 'Le problème persiste. Réessayez dans un moment, ou terminez l\'entretien.',
     confirmerTerminer: 'Terminer l\'entretien maintenant ? Les réponses déjà données sont conservées.',
+    epuise: 'Le problème persiste. Vos réponses sont enregistrées : vous pouvez terminer l\'entretien.',
+    attenteTitre: 'Un instant…',
+  },
+
+  partage: {
+    pasVous: (prenom: string) => `Vous n'êtes pas ${prenom} ?`,
+    nouvelle: 'Commencer une nouvelle participation',
   },
 
   erreurs: {
