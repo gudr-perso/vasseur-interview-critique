@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { ETAPES_GUIDE, lireGuide } from '../../server/guides'
 
+const ETAPES_ANALYSE = ['fiche_repondant', 'synthese', 'expression_besoin'] as const
+
 describe('guides', () => {
   it('fournit un guide pour chaque étape', () => {
-    expect(ETAPES_GUIDE).toEqual(['cadrage', 'questionnaire'])
+    expect(ETAPES_GUIDE).toEqual(['cadrage', 'questionnaire', 'fiche_repondant', 'synthese', 'expression_besoin'])
     for (const etape of ETAPES_GUIDE) expect(lireGuide(etape).length).toBeGreaterThan(800)
   })
 
@@ -21,8 +23,8 @@ describe('guides', () => {
     }
   })
 
-  it('les deux guides disent de lire les documents utiles avec lire_document', () => {
-    for (const etape of ETAPES_GUIDE) expect(lireGuide(etape), etape).toContain('lire_document')
+  it('les guides de cadrage et de questionnaire disent de lire les documents utiles avec lire_document', () => {
+    for (const etape of ['cadrage', 'questionnaire'] as const) expect(lireGuide(etape), etape).toContain('lire_document')
   })
 
   it('le guide de questionnaire donne les bornes à respecter', () => {
@@ -32,6 +34,63 @@ describe('guides', () => {
       'lettres, chiffres, tiret et souligné', '500 caractères', '200 caractères',
     ]) {
       expect(guide, borne).toContain(borne)
+    }
+  })
+})
+
+describe('guides d\'analyse', () => {
+  it('chaque guide d\'analyse dit quoi lire et comment enregistrer, avec l\'accord du porteur', () => {
+    for (const etape of ETAPES_ANALYSE) {
+      const guide = lireGuide(etape)
+      expect(guide.includes('lire_reponses') || guide.includes('lire_entretien'), etape).toBe(true)
+      for (const repere of ['enregistrer_analyse', `type ${etape}`, 'lire_projet', 'sans son accord']) {
+        expect(guide, `${etape} : ${repere}`).toContain(repere)
+      }
+    }
+    expect(lireGuide('fiche_repondant')).toContain('lire_entretien')
+    expect(lireGuide('synthese')).toContain('lire_reponses')
+    expect(lireGuide('expression_besoin')).toContain('lire_reponses')
+  })
+
+  it('les règles communes figurent dans chacun : réponses d\'abord, effectifs, citations exactes, limites, pseudonymes', () => {
+    for (const etape of ETAPES_ANALYSE) {
+      const guide = lireGuide(etape)
+      for (const repere of [
+        'note de cadrage', 'réellement', 'entre guillemets', 'pseudonyme', 'identifi', 'Markdown', 'titres ##',
+        'ne permet', 'Relance.',
+      ]) {
+        expect(guide, `${etape} : ${repere}`).toContain(repere)
+      }
+    }
+    // La fiche ne porte que sur une personne ; les deux autres comptent.
+    for (const etape of ['synthese', 'expression_besoin'] as const) expect(lireGuide(etape), etape).toContain('4 répondants sur 6')
+  })
+
+  it('la méthode précède la section propre aux outils, qui vient en dernier', () => {
+    for (const etape of ETAPES_ANALYSE) {
+      const guide = lireGuide(etape)
+      const section = guide.indexOf('## Avec les outils')
+      expect(section, etape).toBeGreaterThan(guide.length / 2)
+      expect(guide.indexOf('## ', section + 1), etape).toBe(-1)
+      // Avant cette section, aucun nom d'outil : la méthode sert aussi de consigne sans outils.
+      const methode = guide.slice(0, section)
+      for (const outil of ['lire_reponses', 'lire_entretien', 'lire_projet', 'enregistrer_analyse', 'lister_repondants']) {
+        expect(methode, `${etape} : ${outil}`).not.toContain(outil)
+      }
+    }
+  })
+
+  it('chaque guide d\'analyse décrit les rubriques de son livrable', () => {
+    const reperes: Record<(typeof ETAPES_ANALYSE)[number], string[]> = {
+      fiche_repondant: ['Profil', 'Pratique actuelle', 'Difficultés', 'Attentes', 'Objections', 'Citations marquantes', 'Points à creuser', 'Une page au plus'],
+      synthese: ['Qui a répondu', 'Constats principaux', 'Différences entre publics', 'Irritants', 'Attentes', 'confirmée, infirmée ou non tranchée', 'Questions ouvertes'],
+      expression_besoin: [
+        'Contexte et objectif', 'Utilisateurs concernés', 'Situation actuelle', 'indispensable, important ou souhaitable',
+        'Règles de gestion', "Cas d'usage", 'Hors périmètre', 'Questions ouvertes', 'pas l\'écran',
+      ],
+    }
+    for (const etape of ETAPES_ANALYSE) {
+      for (const repere of reperes[etape]) expect(lireGuide(etape), `${etape} : ${repere}`).toContain(repere)
     }
   })
 })
