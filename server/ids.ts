@@ -15,3 +15,11 @@ export function nouveauCode(): string {
 export function maintenantIso(): string {
   return new Date().toISOString()
 }
+
+/** Jeton d'accès d'un répondant : 128 bits d'aléa, 22 caractères base64url. */
+export function nouveauJeton(): string {
+  const octets = crypto.getRandomValues(new Uint8Array(16))
+  let binaire = ''
+  for (const octet of octets) binaire += String.fromCharCode(octet)
+  return btoa(binaire).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
