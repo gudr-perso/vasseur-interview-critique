@@ -46,6 +46,44 @@ async function lireResume(db: D1Database, condition: string, valeur: string): Pr
   return db.prepare(`SELECT ${COLONNES_RESUME} FROM repondants r WHERE ${condition}`).bind(valeur).first<RepondantResume>()
 }
 
+// ─── Numéro de pseudonyme ────────────────────────────────────────────────────
+// Le numéro (« Répondant n ») est attribué une fois, quand le répondant commence : le plus grand numéro jamais
+// attribué dans le projet, plus un. `repondants` n'ayant pas de projet_id, l'unicité par projet est portée par
+// le registre `numeros_repondants` (clé primaire projet + numéro), qui garde aussi les numéros des répondants
+// supprimés : aucun n'est réattribué. Le démarrage et l'inscription au registre forment un seul lot D1, donc
+// une transaction : D1 exécute les écritures d'une base l'une après l'autre, et si deux démarrages obtenaient
+// malgré tout le même numéro, la clé primaire ferait échouer le second, qui est rejoué.
+
+/** Expression SQL du prochain numéro d'un projet, `projet` étant une expression SQL qui donne son identifiant. */
+function prochainNumero(projet: string): string {
+  return `(SELECT COALESCE(MAX(n.numero), 0) + 1 FROM numeros_repondants n WHERE n.projet_id = ${projet})`
+}
+
+/** Inscrit au registre le numéro d'un répondant qui vient d'en recevoir un ; sans effet sinon. */
+function inscrireNumero(db: D1Database, repondantId: string): D1PreparedStatement {
+  return db.prepare(
+    `INSERT INTO numeros_repondants (projet_id, numero, repondant_id)
+     SELECT q.projet_id, r.numero, r.id FROM repondants r JOIN questionnaires q ON q.id = r.questionnaire_id
+     WHERE r.id = ? AND r.numero IS NOT NULL
+       AND NOT EXISTS (SELECT 1 FROM numeros_repondants n WHERE n.repondant_id = r.id)`,
+  ).bind(repondantId)
+}
+
+const ESSAIS_NUMERO = 3
+
+/** Exécute `demarrer` et l'inscription du numéro dans une même transaction, rejouée si le numéro était déjà pris. */
+async function demarrerAvecNumero(db: D1Database, repondantId: string, demarrer: D1PreparedStatement): Promise<D1Result> {
+  for (let essai = 1; ; essai++) {
+    try {
+      const [resultat] = await db.batch([demarrer, inscrireNumero(db, repondantId)])
+      return resultat
+    } catch (e) {
+      const conflit = e instanceof Error && /UNIQUE constraint failed: numeros_repondants/.test(e.message)
+      if (!conflit || essai >= ESSAIS_NUMERO) throw e
+    }
+  }
+}
+
 /** Crée un répondant sur le lien générique d'un questionnaire ouvert. */
 export async function creerRepondantGenerique(
   db: D1Database, code: string, identiteBrute: Partial<Identite>,
@@ -62,16 +100,18 @@ export async function creerRepondantGenerique(
   ).bind(questionnaire.id).first<{ n: number }>()
   if ((compte?.n ?? 0) >= LIMITES_REPONDANT.repondants_generiques) throw new ErreurMetier(MSG_PLAFOND, 409)
 
+  const id = nouvelId()
   const jeton = nouveauJeton()
   const maintenant = maintenantIso()
   // Le statut du questionnaire est contrôlé dans la requête : un questionnaire clos entre-temps n'accepte plus personne.
-  const { meta } = await db.prepare(
-    `INSERT INTO repondants (id, questionnaire_id, jeton, nom, prenom, poste, entreprise, mail, origine, statut, commence_le)
-     SELECT ?, id, ?, ?, ?, ?, ?, ?, 'lien_generique', 'commence', ? FROM questionnaires WHERE id = ? AND statut = 'ouvert'`,
+  const { meta } = await demarrerAvecNumero(db, id, db.prepare(
+    `INSERT INTO repondants (id, questionnaire_id, jeton, nom, prenom, poste, entreprise, mail, origine, statut, commence_le, numero)
+     SELECT ?, q0.id, ?, ?, ?, ?, ?, ?, 'lien_generique', 'commence', ?, ${prochainNumero('q0.projet_id')}
+     FROM questionnaires q0 WHERE q0.id = ? AND q0.statut = 'ouvert'`,
   ).bind(
-    nouvelId(), jeton, identite.nom, identite.prenom, identite.poste, identite.entreprise, identite.mail,
+    id, jeton, identite.nom, identite.prenom, identite.poste, identite.entreprise, identite.mail,
     maintenant, questionnaire.id,
-  ).run()
+  ))
   if (meta.changes === 0) throw new ErreurMetier('Ce questionnaire est clos.', 410)
   return { jeton }
 }
@@ -111,14 +151,16 @@ export async function lireRepondantParJeton(
 /** Enregistre l'identité ; un répondant invité passe en « commencé ». Refusée une fois l'entretien terminé. */
 export async function modifierIdentite(db: D1Database, jeton: string, identiteBrute: Partial<Identite>): Promise<void> {
   const identite = validerIdentite(identiteBrute)
+  const ligne = await db.prepare('SELECT id FROM repondants WHERE jeton = ?').bind(jeton).first<{ id: string }>()
+  if (!ligne) throw new ErreurMetier('Lien invalide.', 404)
+  const projet = '(SELECT q.projet_id FROM questionnaires q WHERE q.id = repondants.questionnaire_id)'
   // Le statut est contrôlé dans la requête : un entretien terminé entre-temps n'est pas modifié.
-  const { meta } = await db.prepare(
+  const { meta } = await demarrerAvecNumero(db, ligne.id, db.prepare(
     `UPDATE repondants SET nom = ?, prenom = ?, poste = ?, entreprise = ?, mail = ?,
-            statut = 'commence', commence_le = COALESCE(commence_le, ?)
-     WHERE jeton = ? AND statut != 'termine'`,
-  ).bind(identite.nom, identite.prenom, identite.poste, identite.entreprise, identite.mail, maintenantIso(), jeton).run()
+            statut = 'commence', commence_le = COALESCE(commence_le, ?), numero = COALESCE(numero, ${prochainNumero(projet)})
+     WHERE id = ? AND statut != 'termine'`,
+  ).bind(identite.nom, identite.prenom, identite.poste, identite.entreprise, identite.mail, maintenantIso(), ligne.id))
   if (meta.changes > 0) return
-  await lireRepondantParJeton(db, jeton)
   throw new ErreurMetier('Cet entretien est terminé : les coordonnées ne peuvent plus être modifiées.', 409)
 }
 

@@ -249,10 +249,10 @@ describe('analyse des entretiens', () => {
     qGerants = gerants.id
     for (const q of [comptables, gerants]) await publierQuestionnaire(base.db, q.id, 'https://x.fr')
 
-    // Pseudonymes dans l'ordre des débuts : A = Répondant 1, C = Répondant 2, B = Répondant 3 ; D, invité, n'en a pas.
+    // Numéros attribués dans l'ordre des débuts : A = Répondant 1, C = Répondant 2, B = Répondant 3 ; D, invité, n'en a pas.
     await demarrer('A', comptables.code, 'termine', '2026-11-01T09:00:00.000Z')
-    await demarrer('B', comptables.code, 'commence', '2026-11-03T09:00:00.000Z')
     await demarrer('C', gerants.code, 'termine', '2026-11-02T09:00:00.000Z')
+    await demarrer('B', comptables.code, 'commence', '2026-11-03T09:00:00.000Z')
     const invitation = await creerInvitation(base.db, comptables.id, identites.D)
     r.D = { id: invitation.id, jeton: invitation.jeton }
 

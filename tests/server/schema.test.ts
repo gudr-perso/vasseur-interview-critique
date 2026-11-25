@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { creerBaseDeTest } from '../helpers/d1'
+import { appliquerMigration, creerBaseDeTest } from '../helpers/d1'
 
 let base: Awaited<ReturnType<typeof creerBaseDeTest>>
 
@@ -109,5 +109,49 @@ describe('schéma D1', () => {
     ).bind(id, maintenant, maintenant).run()
     await inserer('q10')
     await expect(inserer('q11')).rejects.toThrow()
+  })
+})
+
+describe('migration 0003 : numéro des répondants', () => {
+  it('numérote les répondants existants par projet, dans l\'ordre de commence_le puis id, sans les invités', async () => {
+    const ancienne = await creerBaseDeTest('0003_numero_repondant.sql')
+    try {
+      const { db } = ancienne
+      for (const p of ['p1', 'p2']) {
+        await db.prepare(
+          `INSERT INTO projets (id, titre, type_demande, modele_cadrage, modele_interview, modele_analyse, cree_le, maj_le)
+           VALUES (?,?,?,?,?,?,?,?)`,
+        ).bind(p, p, 'amelioration', 'm', 'm', 'm', maintenant, maintenant).run()
+      }
+      for (const [q, p, code] of [['qa', 'p1', 'AAAAAAAAAA'], ['qb', 'p1', 'BBBBBBBBBB'], ['qc', 'p2', 'CCCCCCCCCC']]) {
+        await db.prepare('INSERT INTO questionnaires (id, projet_id, public_vise, mode, contenu, code, cree_le, maj_le) VALUES (?,?,?,?,?,?,?,?)')
+          .bind(q, p, 'Public', 'hybride', '{"questions":[]}', code, maintenant, maintenant).run()
+      }
+      const repondants: [string, string, string, string | null][] = [
+        ['r-b', 'qa', 'termine', '2026-11-02T09:00:00Z'],
+        ['r-a', 'qb', 'commence', '2026-11-02T09:00:00Z'],
+        ['r-c', 'qa', 'commence', '2026-11-01T09:00:00Z'],
+        ['r-i', 'qa', 'invite', null],
+        ['r-z', 'qc', 'termine', '2026-11-05T09:00:00Z'],
+      ]
+      for (const [id, q, statut, commence] of repondants) {
+        await db.prepare("INSERT INTO repondants (id, questionnaire_id, jeton, origine, statut, commence_le) VALUES (?,?,?,'invitation',?,?)")
+          .bind(id, q, `jeton-${id}`, statut, commence).run()
+      }
+      await appliquerMigration(db, '0003_numero_repondant.sql')
+      const { results } = await db.prepare('SELECT id, numero FROM repondants ORDER BY id').all()
+      expect(results).toEqual([
+        { id: 'r-a', numero: 2 }, { id: 'r-b', numero: 3 }, { id: 'r-c', numero: 1 }, { id: 'r-i', numero: null }, { id: 'r-z', numero: 1 },
+      ])
+      const { results: registre } = await db.prepare('SELECT projet_id, numero, repondant_id FROM numeros_repondants ORDER BY projet_id, numero').all()
+      expect(registre).toEqual([
+        { projet_id: 'p1', numero: 1, repondant_id: 'r-c' },
+        { projet_id: 'p1', numero: 2, repondant_id: 'r-a' },
+        { projet_id: 'p1', numero: 3, repondant_id: 'r-b' },
+        { projet_id: 'p2', numero: 1, repondant_id: 'r-z' },
+      ])
+    } finally {
+      await ancienne.fermer()
+    }
   })
 })

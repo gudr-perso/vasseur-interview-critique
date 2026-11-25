@@ -2,8 +2,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { ajouterDocument, creerProjet, modifierProjet } from '../../server/services/projets'
 import { enregistrerLogiciel } from '../../server/services/logiciels'
 import { enregistrerQuestionnaire, publierQuestionnaire } from '../../server/services/questionnaires'
-import { creerInvitation, creerRepondantGenerique, lireRepondantParJeton } from '../../server/services/repondants'
-import { construireCorpus, decouper, enteteAnalyse } from '../../server/services/corpus'
+import { creerInvitation, creerRepondantGenerique, lireRepondantParJeton, supprimerRepondant } from '../../server/services/repondants'
+import { construireCorpus, decouper, enteteAnalyse, listerRepondantsPseudonymises } from '../../server/services/corpus'
 import { creerBaseDeTest } from '../helpers/d1'
 
 let base: Awaited<ReturnType<typeof creerBaseDeTest>>
@@ -183,6 +183,33 @@ describe('construireCorpus', () => {
     await expect(construireCorpus(base.db, { projet_id: autreProjetId, repondant_id: ids.A.id })).rejects.toMatchObject({ statut: 404 })
     await expect(construireCorpus(base.db, { projet_id: projetId, questionnaire_id: 'inconnu' })).rejects.toMatchObject({ statut: 404 })
     await expect(construireCorpus(base.db, { projet_id: 'inconnu' })).rejects.toMatchObject({ statut: 404 })
+  })
+
+  it("garde les pseudonymes après la suppression d'un répondant", async () => {
+    const projet = (await creerProjet(base.db, { titre: 'Suppression', type_demande: 'amelioration' })).id
+    const q = await enregistrerQuestionnaire(base.db, {
+      projet_id: projet, public_vise: 'Chauffeurs', mode: 'hybride',
+      contenu: { questions: [{ id: 'q1', type: 'texte', libelle: 'Comment ?', objectif: 'o' }] },
+    })
+    await publierQuestionnaire(base.db, q.id, 'https://x.fr')
+    const suivants: string[] = []
+    for (const nom of ['Un', 'Deux', 'Trois']) {
+      const { jeton } = await creerRepondantGenerique(base.db, q.code, { nom, prenom: 'X', poste: '', entreprise: `CUMA ${nom}`, mail: '' })
+      const { repondant } = await lireRepondantParJeton(base.db, jeton)
+      suivants.push(repondant.id)
+      await fixerStatut(repondant.id, 'termine', '2026-11-01T09:00:00.000Z', '2026-11-02T09:00:00.000Z')
+      await tour(repondant.id, 1, 'question', 'q1', 'Comment ?', { texte: `Réponse ${nom}` })
+    }
+    await supprimerRepondant(base.db, suivants[0])
+    const corpus = await construireCorpus(base.db, { projet_id: projet })
+    expect(corpus.repondants).toEqual([
+      { id: suivants[1], pseudonyme: 'Répondant 2' },
+      { id: suivants[2], pseudonyme: 'Répondant 3' },
+    ])
+    expect(corpus.texte.split('\n').filter(l => l.startsWith('## '))).toEqual(['## Répondant 2 — CUMA Deux', '## Répondant 3 — CUMA Trois'])
+    expect((await listerRepondantsPseudonymises(base.db, q.id)).map(r => r.pseudonyme)).toEqual(['Répondant 2', 'Répondant 3'])
+    const seul = await construireCorpus(base.db, { projet_id: projet, repondant_id: suivants[2] })
+    expect(seul.repondants).toEqual([{ id: suivants[2], pseudonyme: 'Répondant 3' }])
   })
 
   it('renvoie un corpus vide pour un projet sans entretien terminé', async () => {

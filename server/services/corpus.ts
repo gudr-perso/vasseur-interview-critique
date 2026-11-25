@@ -25,6 +25,7 @@ export interface Morceau {
 
 export interface LigneRepondant {
   id: string
+  numero: number
   questionnaire_id: string
   poste: string
   entreprise: string
@@ -123,22 +124,28 @@ export function rendreEntretien(
   return lignes.join('\n')
 }
 
-/** Les invités n'ont ni entretien ni pseudonyme. */
-const ONT_COMMENCE = "r.statut <> 'invite'"
-/** Ordre qui fixe les numéros des pseudonymes, sur l'ensemble du projet. */
-const ORDRE_DES_PSEUDONYMES = 'ORDER BY r.commence_le, r.id'
+/**
+ * Les invités n'ont ni entretien ni pseudonyme. Le numéro est attribué une fois pour toutes au démarrage
+ * (voir `repondants.ts`) : il ne bouge pas quand un autre répondant est supprimé.
+ */
+const ONT_COMMENCE = "r.statut <> 'invite' AND r.numero IS NOT NULL"
+const ORDRE_DES_PSEUDONYMES = 'ORDER BY r.numero'
 
-function numeroter(ids: string[]): Map<string, string> {
-  return new Map(ids.map((id, i) => [id, `Répondant ${i + 1}`]))
+export function pseudonyme(numero: number): string {
+  return `Répondant ${numero}`
+}
+
+function numeroter(lignes: { id: string; numero: number }[]): Map<string, string> {
+  return new Map(lignes.map(r => [r.id, pseudonyme(r.numero)]))
 }
 
 /** Pseudonyme de chaque répondant du projet qui a commencé son entretien, par identifiant. */
 export async function pseudonymesDuProjet(db: D1Database, projetId: string): Promise<Map<string, string>> {
   const { results } = await db.prepare(
-    `SELECT r.id FROM repondants r JOIN questionnaires q ON q.id = r.questionnaire_id
+    `SELECT r.id, r.numero FROM repondants r JOIN questionnaires q ON q.id = r.questionnaire_id
      WHERE q.projet_id = ? AND ${ONT_COMMENCE} ${ORDRE_DES_PSEUDONYMES}`,
-  ).bind(projetId).all<{ id: string }>()
-  return numeroter(results.map(r => r.id))
+  ).bind(projetId).all<{ id: string; numero: number }>()
+  return numeroter(results)
 }
 
 /** Répondant tel qu'une IA d'analyse peut le voir : ni nom, ni prénom, ni mail, ni jeton. */
@@ -163,7 +170,7 @@ export async function listerRepondantsPseudonymises(db: D1Database, questionnair
     `SELECT r.id AS repondant_id, r.poste, r.entreprise, r.statut, r.commence_le, r.termine_le,
        (SELECT COUNT(*) FROM tours t WHERE t.repondant_id = r.id AND t.reponse IS NOT NULL) AS nb_reponses
      FROM repondants r WHERE r.questionnaire_id = ?
-     ORDER BY r.commence_le IS NULL, r.commence_le, r.id`,
+     ORDER BY r.numero IS NULL, r.numero, r.commence_le, r.id`,
   ).bind(questionnaireId).all<Omit<RepondantPseudonymise, 'pseudonyme'>>()
   return results.map(r => ({
     repondant_id: r.repondant_id,
@@ -192,7 +199,7 @@ export async function entretienPseudonymise(db: D1Database, repondantId: string)
 
 /**
  * Entretiens d'un projet, d'un questionnaire ou d'un répondant, en texte compact et pseudonymisé.
- * Le numéro d'un répondant se calcule sur tout le projet : il ne change pas avec la portée demandée.
+ * Le numéro d'un répondant vaut pour tout le projet : il ne change pas avec la portée demandée.
  */
 export async function construireCorpus(db: D1Database, portee: PorteeAnalyse): Promise<Corpus> {
   await lireProjet(db, portee.projet_id)
@@ -204,11 +211,11 @@ export async function construireCorpus(db: D1Database, portee: PorteeAnalyse): P
   }
 
   const { results: commences } = await db.prepare(
-    `SELECT r.id, r.questionnaire_id, r.poste, r.entreprise, r.statut, r.termine_le, q.public_vise, q.contenu
+    `SELECT r.id, r.numero, r.questionnaire_id, r.poste, r.entreprise, r.statut, r.termine_le, q.public_vise, q.contenu
      FROM repondants r JOIN questionnaires q ON q.id = r.questionnaire_id
      WHERE q.projet_id = ? AND ${ONT_COMMENCE} ${ORDRE_DES_PSEUDONYMES}`,
   ).bind(portee.projet_id).all<LigneRepondant>()
-  const pseudonymes = numeroter(commences.map(r => r.id))
+  const pseudonymes = numeroter(commences)
 
   let retenus: LigneRepondant[]
   if (portee.repondant_id) {

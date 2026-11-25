@@ -123,3 +123,52 @@ describe('invitations et suivi', () => {
     expect(await compte('lien_generique')).toEqual({ n: 300 })
   })
 })
+
+describe('numéro de pseudonyme', () => {
+  const numero = async (id: string) =>
+    (await base.db.prepare('SELECT numero FROM repondants WHERE id = ?').bind(id).first<{ numero: number | null }>())!.numero
+  const idDuJeton = async (jeton: string) => (await lireRepondantParJeton(base.db, jeton)).repondant.id
+
+  it('est attribué au démarrage, une fois, à la suite des numéros du projet', async () => {
+    const projet = (await creerProjet(base.db, { titre: 'Numéros', type_demande: 'amelioration' })).id
+    const q1 = await enregistrerQuestionnaire(base.db, { projet_id: projet, public_vise: 'A', mode: 'hybride', contenu })
+    const q2 = await enregistrerQuestionnaire(base.db, { projet_id: projet, public_vise: 'B', mode: 'hybride', contenu })
+    for (const q of [q1, q2]) await publierQuestionnaire(base.db, q.id, 'https://x.fr')
+
+    const premier = await idDuJeton((await creerRepondantGenerique(base.db, q1.code, identite)).jeton)
+    const invite = await creerInvitation(base.db, q2.id, identite)
+    expect(await numero(invite.id)).toBeNull()
+    const second = await idDuJeton((await creerRepondantGenerique(base.db, q2.code, identite)).jeton)
+    await modifierIdentite(base.db, invite.jeton, identite)
+    expect([await numero(premier), await numero(second), await numero(invite.id)]).toEqual([1, 2, 3])
+    // Corriger son identité ne change pas le numéro.
+    await modifierIdentite(base.db, invite.jeton, { ...identite, poste: 'Directeur' })
+    expect(await numero(invite.id)).toBe(3)
+  })
+
+  it('ne réattribue jamais le numéro d\'un répondant supprimé, même le dernier', async () => {
+    const projet = (await creerProjet(base.db, { titre: 'Suppression', type_demande: 'amelioration' })).id
+    const q = await enregistrerQuestionnaire(base.db, { projet_id: projet, public_vise: 'A', mode: 'hybride', contenu })
+    await publierQuestionnaire(base.db, q.id, 'https://x.fr')
+    const ids: string[] = []
+    for (let i = 0; i < 3; i++) ids.push(await idDuJeton((await creerRepondantGenerique(base.db, q.code, identite)).jeton))
+    await supprimerRepondant(base.db, ids[0])
+    expect([await numero(ids[1]), await numero(ids[2])]).toEqual([2, 3])
+    await supprimerRepondant(base.db, ids[2])
+    const nouveau = await idDuJeton((await creerRepondantGenerique(base.db, q.code, identite)).jeton)
+    expect(await numero(nouveau)).toBe(4)
+  })
+
+  it('reste distinct pour des démarrages simultanés', async () => {
+    const projet = (await creerProjet(base.db, { titre: 'Simultanés', type_demande: 'amelioration' })).id
+    const q = await enregistrerQuestionnaire(base.db, { projet_id: projet, public_vise: 'A', mode: 'hybride', contenu })
+    await publierQuestionnaire(base.db, q.id, 'https://x.fr')
+    const invitations = await Promise.all(Array.from({ length: 4 }, () => creerInvitation(base.db, q.id, identite)))
+    const demarrages = await Promise.all([
+      ...invitations.map(i => modifierIdentite(base.db, i.jeton, identite).then(() => i.id)),
+      ...Array.from({ length: 4 }, () => creerRepondantGenerique(base.db, q.code, identite).then(r => idDuJeton(r.jeton))),
+    ])
+    const numeros = await Promise.all(demarrages.map(numero))
+    expect([...numeros].sort((a, b) => a! - b!)).toEqual([1, 2, 3, 4, 5, 6, 7, 8])
+  })
+})
