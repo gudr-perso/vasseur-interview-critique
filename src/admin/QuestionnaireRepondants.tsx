@@ -3,6 +3,7 @@ import type { StatutQuestionnaire } from '../../shared/interviews'
 import { STATUTS_REPONDANT, type RepondantResume, type StatutRepondant } from '../../shared/repondants'
 import { Button } from '../components/ui/Button'
 import { api } from './api'
+import { BoutonsExport } from './BoutonsExport'
 import { Chargement, ErreurChargement, useChargement } from './commun'
 import { InvitationFormulaire } from './InvitationFormulaire'
 import { nombre } from './libelles'
@@ -78,6 +79,7 @@ export function QuestionnaireRepondants({ questionnaireId, statut }: Props) {
               : <ListeRepondants repondants={etat.donnees} />}
           </>
         )}
+        <BoutonsExport cible={{ questionnaire_id: questionnaireId }} />
       </SectionFiche>
     </div>
   )

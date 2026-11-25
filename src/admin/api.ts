@@ -156,6 +156,14 @@ export const api = {
   },
 }
 
+export type CibleExport = { projet_id: string } | { questionnaire_id: string }
+
+/** Route de téléchargement des réponses d'un projet entier ou d'un questionnaire. */
+export function urlExport(cible: CibleExport, format: 'csv' | 'md', inclureEnCours: boolean): string {
+  const chemin = 'projet_id' in cible ? `projets/${cible.projet_id}` : `questionnaires/${cible.questionnaire_id}`
+  return `/api/admin/${chemin}/export?format=${format}&inclure_en_cours=${inclureEnCours ? 1 : 0}`
+}
+
 /** Adresse à diffuser aux répondants. */
 export function urlQuestionnaire(code: string): string {
   return `${window.location.origin}/q/${code}`

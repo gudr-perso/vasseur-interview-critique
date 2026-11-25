@@ -4,6 +4,7 @@ import type { AnalyseResume } from '../../shared/analyses'
 import { Button } from '../components/ui/Button'
 import { useCatalogue } from '../lib/modeles'
 import { api } from './api'
+import { BoutonsExport } from './BoutonsExport'
 import { Chargement, ErreurChargement, useChargement } from './commun'
 import { GenerationAnalyse, type ProjetPourAnalyse } from './GenerationAnalyse'
 import { formaterDateHeure, libelle, libelleSource, LIBELLES_TYPE_ANALYSE, nombre } from './libelles'
@@ -55,6 +56,7 @@ export function ProjetAnalyses({ projet }: { projet: ProjetPourAnalyse }) {
       {etat.phase === 'chargement' && <Chargement />}
       {etat.phase === 'erreur' && <ErreurChargement message={etat.message} onReessayer={recharger} />}
       {etat.phase === 'pret' && <ListeAnalyses analyses={etat.donnees} />}
+      <BoutonsExport cible={{ projet_id: projet.id }} />
     </SectionFiche>
   )
 }
