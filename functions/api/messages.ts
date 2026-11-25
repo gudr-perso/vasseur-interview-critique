@@ -1,49 +1,36 @@
-interface Env {
-  ANTHROPIC_API_KEY: string
-}
+import { exigerAdmin } from '../../server/auth'
+import type { Env } from '../../server/env'
+import { erreur } from '../../server/http'
 
-const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
-}
+/**
+ * Relais vers l'API Messages d'Anthropic pour l'interview critique.
+ * Réservé à la session admin : sans ce contrôle, n'importe qui pourrait consommer la clé API.
+ */
+export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
+  const refus = await exigerAdmin(request, env)
+  if (refus) return refus
 
-export const onRequestOptions: PagesFunction = async () => {
-  return new Response(null, { status: 204, headers: CORS_HEADERS })
-}
+  if (!env.ANTHROPIC_API_KEY) return erreur('ANTHROPIC_API_KEY non configurée.', 500)
 
-export const onRequestPost: PagesFunction<Env> = async (context) => {
-  const apiKey = context.env.ANTHROPIC_API_KEY
-  if (!apiKey) {
-    return new Response(
-      JSON.stringify({ error: { message: 'ANTHROPIC_API_KEY non configurée.' } }),
-      { status: 500, headers: { 'Content-Type': 'application/json', ...CORS_HEADERS } },
-    )
-  }
-
-  let body: unknown
+  let corps: unknown
   try {
-    body = await context.request.json()
+    corps = await request.json()
   } catch {
-    return new Response(
-      JSON.stringify({ error: { message: 'Corps de requête JSON invalide.' } }),
-      { status: 400, headers: { 'Content-Type': 'application/json', ...CORS_HEADERS } },
-    )
+    return erreur('Corps de requête JSON invalide.', 400)
   }
 
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
+  const reponse = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-api-key': apiKey,
+      'x-api-key': env.ANTHROPIC_API_KEY,
       'anthropic-version': '2023-06-01',
     },
-    body: JSON.stringify(body),
+    body: JSON.stringify(corps),
   })
 
-  const data = await response.json()
-  return new Response(JSON.stringify(data), {
-    status: response.status,
-    headers: { 'Content-Type': 'application/json', ...CORS_HEADERS },
+  return new Response(await reponse.text(), {
+    status: reponse.status,
+    headers: { 'Content-Type': 'application/json' },
   })
 }
