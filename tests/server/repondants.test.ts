@@ -100,16 +100,26 @@ describe('invitations et suivi', () => {
     await expect(lireRepondantParJeton(base.db, 'inconnu')).rejects.toMatchObject({ statut: 404 })
   })
 
-  it('plafonne les répondants du lien générique', async () => {
+  it('plafonne les répondants du lien générique à 300, sans compter les invitations', async () => {
     const q = await questionnaire()
-    const lignes = Array.from({ length: 300 }, (_, i) =>
-      base.db.prepare("INSERT INTO repondants (id, questionnaire_id, jeton, origine) VALUES (?, ?, ?, 'lien_generique')")
-        .bind(`g${i}`, q.id, `jeton-g${i}`))
-    await base.db.batch(lignes)
+    // Une seule instruction pour 299 lignes : un lot de 300 instructions est instable sous charge.
+    await base.db.prepare(
+      `WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 299)
+       INSERT INTO repondants (id, questionnaire_id, jeton, origine)
+       SELECT ?1 || '-g' || i, ?1, ?1 || '-jeton-g' || i, 'lien_generique' FROM n`,
+    ).bind(q.id).run()
+    await creerInvitation(base.db, q.id, identite)
+    const compte = (origine: string) => base.db.prepare(
+      'SELECT COUNT(*) AS n FROM repondants WHERE questionnaire_id = ? AND origine = ?',
+    ).bind(q.id, origine).first<{ n: number }>()
+    expect(await compte('lien_generique')).toEqual({ n: 299 })
+    expect(await compte('invitation')).toEqual({ n: 1 })
+
+    // Le 300e générique passe : l'invitation ne compte pas dans le plafond.
+    await expect(creerRepondantGenerique(base.db, q.code, identite)).resolves.toMatchObject({ jeton: expect.any(String) })
     await expect(creerRepondantGenerique(base.db, q.code, identite)).rejects.toMatchObject({
       statut: 409, message: 'Ce questionnaire a atteint son nombre maximal de participants.',
     })
-    // Les invitations ne comptent pas dans ce plafond.
-    await expect(creerInvitation(base.db, q.id, identite)).resolves.toMatchObject({ statut: 'invite' })
+    expect(await compte('lien_generique')).toEqual({ n: 300 })
   })
 })
