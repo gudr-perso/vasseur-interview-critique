@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react'
 import { Button } from '../components/ui/Button'
 import { urlQuestionnaire } from './api'
 
-/** Adresse publique d'un questionnaire, avec un bouton pour la copier. */
-export function Adresse({ code }: { code: string }) {
-  const url = urlQuestionnaire(code)
+/** Adresse publique d'un questionnaire (par son code) ou lien donné, avec un bouton pour le copier. */
+export function Adresse(props: { code: string } | { url: string }) {
+  const url = 'url' in props ? props.url : urlQuestionnaire(props.code)
   const [etat, setEtat] = useState<'repos' | 'copie' | 'echec'>('repos')
 
   useEffect(() => {

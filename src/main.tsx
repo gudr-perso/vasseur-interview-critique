@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client'
 import { createBrowserRouter, createRoutesFromElements, Route, RouterProvider } from 'react-router-dom'
 import App from './App'
 import { AdminLayout } from './admin/AdminLayout'
+import { EntretienScreen } from './admin/EntretienScreen'
 import { LogicielsScreen } from './admin/LogicielsScreen'
 import { ProjetNouveauScreen } from './admin/ProjetNouveauScreen'
 import { ProjetScreen } from './admin/ProjetScreen'
@@ -28,6 +29,7 @@ const routeur = createBrowserRouter(
         <Route path="projets/nouveau" element={<ProjetNouveauScreen />} />
         <Route path="projets/:id" element={<ProjetScreen />} />
         <Route path="questionnaires/:id" element={<QuestionnaireScreen />} />
+        <Route path="repondants/:id" element={<EntretienScreen />} />
       </Route>
       {/* Parcours répondant : public, sans session ; l'accès se fait par le code ou le jeton. */}
       <Route element={<RepondantLayout />}>

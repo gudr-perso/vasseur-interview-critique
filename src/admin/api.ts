@@ -2,6 +2,7 @@ import type {
   Contenu, DocumentProjet, Logiciel, Mode, ProjetComplet, ProjetFiche, ProjetResume, Questionnaire, StatutProjet, TypeDemande,
 } from '../../shared/interviews'
 import type { Etape } from '../../shared/modeles'
+import type { EntretienLu, Identite, RepondantResume } from '../../shared/repondants'
 
 export class ErreurApi extends Error {
   constructor(message: string, readonly statut: number) {
@@ -88,9 +89,21 @@ export const api = {
     publier: (id: string) => appel<Questionnaire>('POST', `/questionnaires/${id}/publier`),
     clore: (id: string) => appel<Questionnaire>('POST', `/questionnaires/${id}/clore`),
   },
+  repondants: {
+    lister: (questionnaireId: string) => appel<RepondantResume[]>('GET', `/questionnaires/${questionnaireId}/repondants`),
+    inviter: (questionnaireId: string, identite: Identite) =>
+      appel<RepondantResume>('POST', `/questionnaires/${questionnaireId}/repondants`, identite),
+    lireEntretien: (id: string) => appel<EntretienLu>('GET', `/repondants/${id}`),
+    supprimer: (id: string) => appel<void>('DELETE', `/repondants/${id}`),
+  },
 }
 
 /** Adresse à diffuser aux répondants. */
 export function urlQuestionnaire(code: string): string {
   return `${window.location.origin}/q/${code}`
+}
+
+/** Lien personnel d'une invitation. */
+export function urlInvitation(jeton: string): string {
+  return `${window.location.origin}/r/${encodeURIComponent(jeton)}`
 }

@@ -9,6 +9,7 @@ import { Alerte, CLASSE_LIEN, Confirmation, messageErreur } from './commun'
 import { LIBELLES_MODE, LIBELLES_STATUT_QUESTIONNAIRE } from './libelles'
 import { empreinte, versBrouillon, versSaisie, type Brouillon } from './questionnaireBrouillon'
 import { QuestionnaireContenu } from './QuestionnaireContenu'
+import { QuestionnaireRepondants } from './QuestionnaireRepondants'
 import { QuestionnaireReglages } from './QuestionnaireReglages'
 import { useSaisieNonEnregistree } from './saisies'
 
@@ -112,6 +113,10 @@ export function QuestionnaireEditeur({ initial }: { initial: Questionnaire }) {
           contenu={brouillon.contenu} lectureSeule={lectureSeule} onChange={contenu => changer({ contenu })}
         />
       </fieldset>
+
+      {questionnaire.statut !== 'brouillon' && (
+        <QuestionnaireRepondants questionnaireId={questionnaire.id} statut={questionnaire.statut} />
+      )}
 
       {(questionnaire.statut !== 'clos' || succes || erreur) && (
         <div className="sticky bottom-0 -mx-4 mt-6 px-4 py-3 bg-paper border-t border-border">

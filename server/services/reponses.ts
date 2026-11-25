@@ -55,11 +55,5 @@ export function validerReponse(question: Question | 'libre', brute: Reponse): Re
   }
 }
 
-/** Réponse en une ligne, pour l'IA et pour la lecture d'un entretien. */
-export function reponseEnTexte(reponse: Reponse): string {
-  const valeur = reponse.valeur
-  const principal = Array.isArray(valeur) ? valeur.join(' ; ')
-    : typeof valeur === 'number' ? `${valeur} / 5`
-    : valeur ?? reponse.texte ?? ''
-  return reponse.commentaire ? `${principal} — commentaire : ${reponse.commentaire}` : principal
-}
+// Partagée avec l'admin, qui rend les réponses d'un entretien de la même façon.
+export { reponseEnTexte } from '../../shared/repondants'

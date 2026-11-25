@@ -54,6 +54,7 @@ interface ChampTexteProps extends ChampCommun {
   min?: number
   max?: number
   inputMode?: InputHTMLAttributes<HTMLInputElement>['inputMode']
+  autoComplete?: string
 }
 
 export function ChampTexte(props: ChampTexteProps) {
