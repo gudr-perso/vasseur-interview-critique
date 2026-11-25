@@ -1,6 +1,6 @@
 import { reponseEnTexte, type Reponse } from '../../shared/repondants'
 import { ErreurMetier } from '../erreurs'
-import { rendreEntretien, type LigneTour } from './corpus'
+import { champDeTitre, rendreEntretien, surUneLigne, type LigneTour } from './corpus'
 import { lireProjet } from './projets'
 import { lireQuestionnaire } from './questionnaires'
 
@@ -94,7 +94,7 @@ function nomAffiche(base: string, date: string, extension: string): string {
 }
 
 function nomEntier(repondant: Pick<LigneEntretien, 'nom' | 'prenom'>): string {
-  return [repondant.prenom, repondant.nom].filter(Boolean).join(' ').replace(/\s+/g, ' ')
+  return [champDeTitre(repondant.prenom), champDeTitre(repondant.nom)].filter(Boolean).join(' ')
 }
 
 export async function exporterReponses(
@@ -151,12 +151,13 @@ export async function exporterReponses(
   }
 
   const [annee, mois, jour] = date.split('-')
-  const entete = [`# ${projet.titre}`]
-  if (questionnaire) entete.push(`Questionnaire : ${questionnaire.public_vise}`)
+  const entete = [`# ${surUneLigne(projet.titre)}`]
+  if (questionnaire) entete.push(`Questionnaire : ${surUneLigne(questionnaire.public_vise)}`)
   entete.push(`Export du ${jour}/${mois}/${annee} · ${retenus.length} entretien${retenus.length > 1 ? 's' : ''}`, '')
   const sections = retenus.map(r => {
     const identite = nomEntier(r) || 'Répondant sans nom'
-    const detail = [r.poste, r.entreprise].filter(Boolean).join(', ')
+    // Même neutralisation que le corpus : rien de ce qu'a saisi le répondant ne peut faire un titre ou une ligne.
+    const detail = [champDeTitre(r.poste), champDeTitre(r.entreprise)].filter(Boolean).join(', ')
     const titre = `## ${identite}${detail ? ` — ${detail}` : ''} (${r.statut === 'termine' ? 'terminé' : 'en cours'})`
     return rendreEntretien(r, titre, tours.get(r.id) ?? [], false)
   })

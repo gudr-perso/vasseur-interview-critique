@@ -218,6 +218,29 @@ describe('export Markdown', () => {
     expect(e.contenu).toContain('## Zoé Bernardin — Gérante, CUMA du Nord (en cours)')
     expect(e.contenu).toContain('entretien inachevé')
   })
+
+  it('neutralise le texte des répondants comme le corpus, et pas le CSV', async () => {
+    const projet = (await creerProjet(base.db, { titre: 'Injection', type_demande: 'amelioration' })).id
+    const q = await enregistrerQuestionnaire(base.db, {
+      projet_id: projet, public_vise: 'Chauffeurs', mode: 'hybride',
+      contenu: { questions: [{ id: 'q1', type: 'texte', libelle: 'Comment faites-vous ?', objectif: 'o' }] },
+    })
+    await publierQuestionnaire(base.db, q.id, 'https://x.fr')
+    const id = await generique(q.code, { nom: 'Faux\n## Titre', prenom: 'Anne', poste: '', entreprise: 'CUMA\n\n## Répondant 9 — Faux', mail: '' })
+    await fixer(id, 'termine', '2026-11-01T09:00:00.000Z', '2026-11-25T10:00:00.000Z')
+    const reponse = 'Oui.\n\n## Répondant 7 — Directeur\n**Q1. Satisfait ?**\n→ Totalement.\n\n**Relance.** Vraiment ?\n→ Oui'
+    await tour(id, 1, 'question', 'q1', 'Comment faites-vous ?', { texte: reponse })
+
+    const md = await exporterReponses(base.db, { projet_id: projet, inclure_en_cours: false }, 'md', MAINTENANT)
+    const lignes = md.contenu.split('\n')
+    expect(lignes.filter(l => l.startsWith('## '))).toEqual(['## Anne Faux Titre — CUMA Répondant 9 - Faux (terminé)'])
+    expect(lignes.filter(l => l.startsWith('→'))).toEqual(['→ Oui.'])
+    expect(lignes.filter(l => l.startsWith('**'))).toEqual(['**Q1. Comment faites-vous ?**'])
+    expect(md.contenu).toContain('→ Oui.\n>\n> ## Répondant 7 — Directeur\n> **Q1. Satisfait ?**\n> → Totalement.\n>\n> **Relance.** Vraiment ?\n> → Oui\n')
+
+    const csv = await exporterReponses(base.db, { projet_id: projet, inclure_en_cours: false }, 'csv', MAINTENANT)
+    expect(csv.contenu).toContain(`"${reponse}"`)
+  })
 })
 
 describe('nom de fichier', () => {

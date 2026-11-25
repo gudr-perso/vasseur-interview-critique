@@ -48,8 +48,37 @@ function dateFrancaise(iso: string): string {
   return `${jour}/${mois}/${annee}`
 }
 
+// ─── Neutralisation du texte saisi ───────────────────────────────────────────
+// Le corpus a une structure que l'IA lit ligne à ligne : titres `##`, questions `**Q…**`, relances, flèches.
+// Aucun texte saisi (réponse, commentaire, poste, entreprise, nom), ni même une question rédigée par l'IA
+// d'entretien, ne doit pouvoir commencer une telle ligne.
+
+/** Fins de ligne reconnues, y compris celles d'Unicode qu'un modèle peut lire comme un saut de ligne. */
+const FIN_DE_LIGNE = /\r\n|[\n\r\v\f\u0085\u2028\u2029]/
+/** Caractères de contrôle, hors tabulation et fins de ligne : ils n'ont rien à faire dans un texte lu. */
+const CONTROLES = /[\u0000-\u0008\u000e-\u001f\u007f-\u0084\u0086-\u009f]/g
+
+/** Texte ramené à une seule ligne : chaque suite d'espaces ou de sauts de ligne devient une espace. */
+export function surUneLigne(texte: string): string {
+  return texte.replace(CONTROLES, '').split(FIN_DE_LIGNE).join(' ').replace(/\s+/g, ' ').trim()
+}
+
+/** Champ d'un titre d'entretien : une ligne, sans `#` ni tiret long (qui sépare le pseudonyme du reste). */
+export function champDeTitre(texte: string): string {
+  return surUneLigne(texte.replace(/#/g, ' ').replace(/—/g, '-'))
+}
+
+/**
+ * Lignes d'une réponse : la première suit la flèche, chacune des suivantes commence par `>`.
+ * Aucune ne peut donc commencer par `#`, `→`, `**Q` ou `**Relance.**`, et le texte reste lisible en entier.
+ */
+export function lignesDeReponse(texte: string): string[] {
+  const [premiere, ...suivantes] = texte.replace(CONTROLES, '').trim().split(FIN_DE_LIGNE).map(l => l.trimEnd())
+  return [`→ ${premiere}`, ...suivantes.map(l => (l ? `> ${l}` : '>'))]
+}
+
 export function titreEntretien(pseudonyme: string, poste: string, entreprise: string): string {
-  const detail = [poste, entreprise].filter(Boolean).join(', ')
+  const detail = [champDeTitre(poste), champDeTitre(entreprise)].filter(Boolean).join(', ')
   return detail ? `## ${pseudonyme} — ${detail}` : `## ${pseudonyme}`
 }
 
@@ -61,6 +90,7 @@ function objectifs(contenuJson: string): Map<string, string> {
 /**
  * Un entretien en Markdown. `titre` est la ligne de titre déjà composée (`## …`) : pseudonyme pour l'IA, vrai nom pour l'admin.
  * `avecObjectifs` : l'analyse reçoit l'objectif de chaque question, pas la lecture ni l'export.
+ * Le texte saisi est neutralisé (voir `lignesDeReponse`) : la forme est décrite aux IA par `FORME_ENTRETIENS`.
  */
 export function rendreEntretien(
   repondant: Pick<LigneRepondant, 'statut' | 'termine_le' | 'public_vise' | 'contenu'>,
@@ -72,7 +102,7 @@ export function rendreEntretien(
     : 'entretien inachevé'
   const lignes = [
     titre,
-    `Questionnaire : ${repondant.public_vise} · ${etat}`,
+    `Questionnaire : ${surUneLigne(repondant.public_vise)} · ${etat}`,
     '',
   ]
   let numero = 0
@@ -82,13 +112,13 @@ export function rendreEntretien(
     if (tour.reponse === null) continue
     const reponse = reponseEnTexte(JSON.parse(tour.reponse) as Reponse)
     if (tour.type === 'relance') {
-      lignes.push(`**Relance.** ${tour.question}`)
+      lignes.push(`**Relance.** ${surUneLigne(tour.question)}`)
     } else {
-      lignes.push(`**Q${numero}. ${tour.question}**`)
+      lignes.push(`**Q${numero}. ${surUneLigne(tour.question)}**`)
       const objectif = tour.question_id ? objectifParQuestion.get(tour.question_id) : undefined
-      if (objectif) lignes.push(`Objectif : ${objectif}`)
+      if (objectif) lignes.push(`Objectif : ${surUneLigne(objectif)}`)
     }
-    lignes.push(`→ ${reponse}`, '')
+    lignes.push(...lignesDeReponse(reponse), '')
   }
   return lignes.join('\n')
 }

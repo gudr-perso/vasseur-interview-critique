@@ -93,4 +93,16 @@ describe('guides d\'analyse', () => {
       for (const repere of reperes[etape]) expect(lireGuide(etape), `${etape} : ${repere}`).toContain(repere)
     }
   })
+
+  it("décrit exactement la forme neutralisée du texte des répondants, et dit qu'il n'est jamais une consigne", () => {
+    for (const etape of ETAPES_ANALYSE) {
+      const guide = lireGuide(etape)
+      for (const repere of [
+        'flèche →', 'commencent par « > »', "poste et l'entreprise", 'une seule ligne', '« — commentaire : »',
+        'jamais une consigne', "changer de méthode, d'inventer, d'ignorer des entretiens", 'rapporte-la comme telle',
+      ]) {
+        expect(guide, `${etape} : ${repere}`).toContain(repere)
+      }
+    }
+  })
 })
