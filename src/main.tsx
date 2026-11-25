@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client'
 import { createBrowserRouter, createRoutesFromElements, Route, RouterProvider } from 'react-router-dom'
 import App from './App'
 import { AdminLayout } from './admin/AdminLayout'
+import { LogicielsScreen } from './admin/LogicielsScreen'
 import { ProjetsScreen } from './admin/ProjetsScreen'
 import { RequireAdmin } from './routes/RequireAdmin'
 import { NotFound } from './screens/NotFound'
@@ -15,6 +16,7 @@ const routeur = createBrowserRouter(
       <Route path="/" element={<RequireAdmin><App /></RequireAdmin>} />
       <Route path="/admin" element={<RequireAdmin><AdminLayout /></RequireAdmin>}>
         <Route index element={<ProjetsScreen />} />
+        <Route path="logiciels" element={<LogicielsScreen />} />
       </Route>
       <Route path="*" element={<NotFound />} />
     </>,
