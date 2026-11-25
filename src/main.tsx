@@ -8,6 +8,9 @@ import { ProjetNouveauScreen } from './admin/ProjetNouveauScreen'
 import { ProjetScreen } from './admin/ProjetScreen'
 import { ProjetsScreen } from './admin/ProjetsScreen'
 import { QuestionnaireScreen } from './admin/QuestionnaireScreen'
+import { EntretienScreen as EntretienRepondantScreen } from './repondant/EntretienScreen'
+import { LienGeneriqueScreen } from './repondant/LienGeneriqueScreen'
+import { RepondantLayout } from './repondant/RepondantLayout'
 import { RequireAdmin } from './routes/RequireAdmin'
 import { ErreurRoute } from './screens/ErreurRoute'
 import { NotFound } from './screens/NotFound'
@@ -25,6 +28,11 @@ const routeur = createBrowserRouter(
         <Route path="projets/nouveau" element={<ProjetNouveauScreen />} />
         <Route path="projets/:id" element={<ProjetScreen />} />
         <Route path="questionnaires/:id" element={<QuestionnaireScreen />} />
+      </Route>
+      {/* Parcours répondant : public, sans session ; l'accès se fait par le code ou le jeton. */}
+      <Route element={<RepondantLayout />}>
+        <Route path="/q/:code" element={<LienGeneriqueScreen />} />
+        <Route path="/r/:jeton" element={<EntretienRepondantScreen />} />
       </Route>
       <Route path="*" element={<NotFound />} />
     </Route>,
