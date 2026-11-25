@@ -47,3 +47,23 @@ export const schemaQuestionnaire = z.object({
   relances_max_par_question: z.number().int().optional(),
   tours_max: z.number().int().optional(),
 })
+
+// Les règles (champs obligatoires, longueurs, forme du mail) et leurs messages sont dans les services.
+export const schemaIdentite = z.object({
+  nom: z.string().optional(),
+  prenom: z.string().optional(),
+  poste: z.string().optional(),
+  entreprise: z.string().optional(),
+  mail: z.string().optional(),
+})
+
+export const schemaReponse = z.object({
+  ordre: z.number().int().min(1),
+  reponse: z.object({
+    valeur: z.union([z.string(), z.array(z.string()), z.number().int()]).optional(),
+    texte: z.string().optional(),
+    commentaire: z.string().optional(),
+  }),
+})
+
+export const schemaInvitation = schemaIdentite

@@ -162,3 +162,16 @@ export async function supprimerRepondant(db: D1Database, repondantId: string): P
   const { meta } = await db.prepare('DELETE FROM repondants WHERE id = ?').bind(repondantId).run()
   if (meta.changes === 0) throw new ErreurMetier(`Répondant introuvable : ${repondantId}`, 404)
 }
+
+/** Accueil du lien générique : ce que voit une personne avant de donner son identité. Rien d'interne. */
+export async function lireAccueilParCode(
+  db: D1Database, code: string,
+): Promise<{ public_vise: string; introduction: string; duree_estimee_min: number; mode: Mode }> {
+  const ligne = await db.prepare(
+    'SELECT public_vise, introduction, duree_estimee_min, mode, statut FROM questionnaires WHERE code = ?',
+  ).bind(code).first<{ public_vise: string; introduction: string; duree_estimee_min: number; mode: Mode; statut: string }>()
+  if (!ligne || ligne.statut === 'brouillon') throw new ErreurMetier('Lien invalide.', 404)
+  if (ligne.statut === 'clos') throw new ErreurMetier('Ce questionnaire est clos.', 410)
+  const { public_vise, introduction, duree_estimee_min, mode } = ligne
+  return { public_vise, introduction, duree_estimee_min, mode }
+}
