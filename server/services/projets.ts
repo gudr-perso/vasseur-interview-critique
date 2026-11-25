@@ -1,60 +1,15 @@
 import { DEFAUTS, type Etape } from '../../shared/modeles'
 import { ErreurMetier } from '../erreurs'
 import { maintenantIso, nouvelId } from '../ids'
-import type { Logiciel } from './logiciels'
+import {
+  STATUTS_PROJET, TYPES_DEMANDE,
+  type DocumentProjet, type Logiciel, type Projet, type ProjetComplet, type ProjetResume,
+  type QuestionnaireResume, type StatutProjet, type TypeDemande,
+} from '../../shared/interviews'
 import { LIMITES, verifierLongueur } from './limites'
 
-export const TYPES_DEMANDE = ['evolution_simple', 'amelioration', 'nouvelle_fonctionnalite'] as const
-export type TypeDemande = (typeof TYPES_DEMANDE)[number]
-
-export const STATUTS_PROJET = ['brouillon', 'cadre', 'en_cours', 'clos'] as const
-export type StatutProjet = (typeof STATUTS_PROJET)[number]
-
-export interface Projet {
-  id: string
-  titre: string
-  type_demande: TypeDemande
-  description: string
-  note_cadrage: string
-  resume_contexte: string
-  modele_cadrage: string
-  modele_interview: string
-  modele_analyse: string
-  statut: StatutProjet
-  cree_le: string
-  maj_le: string
-}
-
-export interface DocumentProjet {
-  id: string
-  nom: string
-  contenu: string
-  cree_le: string
-}
-
-export interface QuestionnaireResume {
-  id: string
-  public_vise: string
-  mode: string
-  statut: string
-  code: string
-}
-
-export interface ProjetComplet extends Projet {
-  logiciels: Logiciel[]
-  documents: DocumentProjet[]
-  questionnaires: QuestionnaireResume[]
-}
-
-export interface ProjetResume {
-  id: string
-  titre: string
-  type_demande: TypeDemande
-  statut: StatutProjet
-  /** Noms des logiciels, séparés par des virgules ; vide si aucun. */
-  logiciels: string
-  maj_le: string
-}
+export { STATUTS_PROJET, TYPES_DEMANDE }
+export type { DocumentProjet, Projet, ProjetComplet, ProjetResume, QuestionnaireResume, StatutProjet, TypeDemande }
 
 export interface CreationProjet {
   titre: string

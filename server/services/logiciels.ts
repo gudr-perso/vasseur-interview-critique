@@ -1,14 +1,9 @@
+import type { Logiciel } from '../../shared/interviews'
 import { ErreurMetier } from '../erreurs'
 import { maintenantIso, nouvelId } from '../ids'
 import { LIMITES, verifierLongueur } from './limites'
 
-export interface Logiciel {
-  id: string
-  nom: string
-  contexte: string
-  cree_le: string
-  maj_le: string
-}
+export type { Logiciel }
 
 export interface SaisieLogiciel {
   id?: string

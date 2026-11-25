@@ -1,39 +1,16 @@
+import {
+  MODES, STATUTS_QUESTIONNAIRE, TYPES_QUESTION,
+  type Contenu, type ContenuEntretien, type ContenuHybride, type Mode, type Question, type Questionnaire,
+  type StatutQuestionnaire, type Theme, type TypeQuestion,
+} from '../../shared/interviews'
 import { ErreurMetier } from '../erreurs'
 import { maintenantIso, nouveauCode, nouvelId } from '../ids'
 import { LIMITES, estInvisible, verifierLongueur } from './limites'
 
-export const MODES = ['hybride', 'entretien'] as const
-export type Mode = (typeof MODES)[number]
-
-export const TYPES_QUESTION = ['choix_unique', 'choix_multiple', 'echelle', 'texte'] as const
-export type TypeQuestion = (typeof TYPES_QUESTION)[number]
-
-export interface Question {
-  id: string
-  type: TypeQuestion
-  libelle: string
-  /** Présent uniquement pour les deux types « choix ». */
-  options?: string[]
-  /** Ce qu'on cherche à apprendre ; jamais montré au répondant, sert à décider d'une relance. */
-  objectif: string
+export { MODES, STATUTS_QUESTIONNAIRE, TYPES_QUESTION }
+export type {
+  Contenu, ContenuEntretien, ContenuHybride, Mode, Question, Questionnaire, StatutQuestionnaire, Theme, TypeQuestion,
 }
-
-export interface Theme {
-  id: string
-  titre: string
-  objectif: string
-}
-
-export interface ContenuHybride {
-  questions: Question[]
-}
-
-export interface ContenuEntretien {
-  question_ouverture: string
-  themes: Theme[]
-}
-
-export type Contenu = ContenuHybride | ContenuEntretien
 
 const QUESTIONS_MAX = 40
 const THEMES_MAX = 12
@@ -131,25 +108,6 @@ function validerEntretien(brut: Record<string, unknown>): ContenuEntretien {
 export function validerContenu(mode: Mode, contenu: unknown): Contenu {
   const brut = (contenu && typeof contenu === 'object' ? contenu : {}) as Record<string, unknown>
   return mode === 'hybride' ? validerHybride(brut) : validerEntretien(brut)
-}
-
-export const STATUTS_QUESTIONNAIRE = ['brouillon', 'ouvert', 'clos'] as const
-export type StatutQuestionnaire = (typeof STATUTS_QUESTIONNAIRE)[number]
-
-export interface Questionnaire {
-  id: string
-  projet_id: string
-  public_vise: string
-  mode: Mode
-  introduction: string
-  duree_estimee_min: number
-  contenu: Contenu
-  relances_max_par_question: number
-  tours_max: number
-  code: string
-  statut: StatutQuestionnaire
-  cree_le: string
-  maj_le: string
 }
 
 export interface SaisieQuestionnaire {
