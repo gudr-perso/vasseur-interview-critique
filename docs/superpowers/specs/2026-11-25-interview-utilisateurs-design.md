@@ -80,7 +80,7 @@ Mode entretien — guide :
    - `nouvelle_fonctionnalite` : jusqu'à 12 questions couvrant objectif, utilisateurs concernés, fonctionnement actuel, contraintes, hors périmètre, hypothèses à vérifier.
    - L'IA s'arrête dès qu'elle a assez ; un bouton « Terminer le cadrage » coupe à tout moment.
    - Résultat : la **note de cadrage**, modifiable à la main.
-6. **Questionnaires** : génération par l'IA à partir de la note de cadrage (publics proposés, mode, questions ou guide), puis édition manuelle (modifier, réordonner, supprimer, ajouter), publication, clôture. La publication affiche l'URL à diffuser. Un questionnaire `ouvert` ayant déjà des réponses n'est plus modifiable sur ses questions.
+6. **Questionnaires** : génération par l'IA à partir de la note de cadrage (publics proposés, mode, questions ou guide), puis édition manuelle (modifier, réordonner, supprimer, ajouter), publication, clôture. La publication affiche l'URL à diffuser. Seul un questionnaire en brouillon est modifiable ou supprimable ; un questionnaire ouvert peut être clos. Un brouillon modifié en même temps dans l'admin et par Claude (MCP) n'est pas protégé : le dernier enregistrement l'emporte.
 7. **Répondants** : création d'invitations nominatives (lien personnel à copier), suivi invité / commencé / terminé, lecture d'un entretien, suppression d'un répondant et de ses réponses.
 8. **Analyses** : génération à la demande, historique conservé, lecture des analyses déposées via MCP, export CSV (une ligne par tour) et Markdown (un entretien par section).
 
@@ -173,8 +173,8 @@ Chaque lot fait l'objet de son propre plan d'implémentation et est livrable seu
 
 1. **Socle** — D1 et migrations, couche de services, React Router, session admin, proxy verrouillé, catalogue de modèles branché sur l'interview critique.
 2. **Admin sans IA + MCP**, en deux temps :
-   - **2A — Services et MCP** : services logiciels, projets, questionnaires ; serveur MCP avec `lire_guide`. Cadrage, génération et publication sont alors faisables dans Claude.
-   - **2B — Écrans admin** : API admin et écrans des logiciels, des projets, d'édition et de publication des questionnaires.
+   - **2A — Services et MCP** (livré) : services logiciels, projets, questionnaires ; serveur MCP avec `lire_guide`. Cadrage, génération et publication sont alors faisables dans Claude.
+   - **2B — Écrans admin** (livré) : API admin et écrans des logiciels, des projets, d'édition et de publication des questionnaires.
 3. **Répondant** — liens générique et nominatif, identité, passation hybride et entretien, invitations et suivi dans l'admin.
 4. **Analyses** — lecture des entretiens, analyses via MCP et via l'admin (API), exports. Les outils MCP de lecture des réponses et de dépôt d'analyses sont livrés avec ce lot.
 5. **IA dans l'admin** — dialogue de cadrage et génération de questionnaires par l'API, avec les modèles du projet.

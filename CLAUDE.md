@@ -43,13 +43,14 @@ src/
   lib/                 — api.ts, adminApi.ts, modeles.ts, templates.ts, presets.ts
   components/          — ui/, layout/
   screens/             — écrans de l'interview critique, NotFound
-  admin/               — LoginScreen, AdminHome
+  admin/               — écrans admin : projets, logiciels, fiche projet, éditeur de questionnaire ;
+                         api.ts (client), contenu.ts (logique d'édition), extraction.ts (texte des fichiers)
   routes/              — RequireAdmin
-shared/                — types et constantes communs navigateur / serveur
+shared/                — types et constantes communs navigateur / serveur (modeles.ts, interviews.ts)
 server/                — logique serveur : auth, modeles, http, env, ids, erreurs, guides
   services/            — logiciels, projets, questionnaires (règles métier sur D1)
   mcp/                 — outils, serveur et contrôle d'accès MCP
-functions/api/         — routes : messages.ts (proxy), admin/*
+functions/api/         — routes : messages.ts (proxy), admin/{logiciels,projets,documents,questionnaires}
 functions/mcp/         — serveur MCP : /mcp/<jeton> et /mcp (Bearer)
 scripts/               — verifier-mcp.mjs
 migrations/            — schéma D1
@@ -59,6 +60,8 @@ tests/                 — tests Vitest (server/, functions/)
 ## Navigation
 
 React Router : `/` (interview critique), `/admin`, toute autre adresse → « Lien invalide ». Ces deux pages passent par `RequireAdmin`.
+Admin : `/admin` (projets), `/admin/logiciels`, `/admin/projets/nouveau`, `/admin/projets/:id`, `/admin/questionnaires/:id`.
+Les écrans admin avertissent avant de quitter une page qui porte une saisie non enregistrée : routeur de données (`createBrowserRouter`) et `useBlocker`, dans `src/admin/saisies.tsx`.
 À l'intérieur de l'interview critique, la navigation reste pilotée par `useStore().screen` :
 `config` → `loading` → `interview` → `synthesis`, et `config`/`synthesis` → `templates` → retour.
 
@@ -66,6 +69,10 @@ React Router : `/` (interview critique), `/admin`, toute autre adresse → « Li
 
 Cadrage, questionnaires et publication depuis Claude : voir `docs/mcp.md`. Secret `MCP_TOKEN`.
 Toute règle métier vit dans `server/services/` ; un outil MCP ne fait que valider ses arguments et appeler un service.
+
+## API admin
+
+`/api/admin/*`, protégée par la session. Une route = validation Zod (`server/schemas.ts`) + appel d'un service, dans l'enveloppe `route()` de `server/api.ts` qui traduit les `ErreurMetier`. Les mêmes services servent le MCP : une règle métier ne s'écrit qu'une fois, dans `server/services/`.
 
 ## Déploiement Cloudflare Pages
 
