@@ -7,6 +7,7 @@ import { LogicielsScreen } from './admin/LogicielsScreen'
 import { ProjetNouveauScreen } from './admin/ProjetNouveauScreen'
 import { ProjetScreen } from './admin/ProjetScreen'
 import { ProjetsScreen } from './admin/ProjetsScreen'
+import { QuestionnaireScreen } from './admin/QuestionnaireScreen'
 import { RequireAdmin } from './routes/RequireAdmin'
 import { NotFound } from './screens/NotFound'
 import './index.css'
@@ -21,6 +22,7 @@ const routeur = createBrowserRouter(
         <Route path="logiciels" element={<LogicielsScreen />} />
         <Route path="projets/nouveau" element={<ProjetNouveauScreen />} />
         <Route path="projets/:id" element={<ProjetScreen />} />
+        <Route path="questionnaires/:id" element={<QuestionnaireScreen />} />
       </Route>
       <Route path="*" element={<NotFound />} />
     </>,
