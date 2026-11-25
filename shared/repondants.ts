@@ -49,7 +49,10 @@ export interface Progression {
 export type Etape =
   | { type: 'identite' }
   | { type: 'question'; question: QuestionPublique; progression: Progression }
-  | { type: 'interrompu' }
+  /** La question suivante est en préparation : relire l'état dans un instant. */
+  | { type: 'attente' }
+  /** Le calcul de la suite a échoué ; `reessai_possible` est faux une fois les nouveaux essais épuisés. */
+  | { type: 'interrompu'; reessai_possible: boolean }
   | { type: 'termine' }
   | { type: 'clos' }
 

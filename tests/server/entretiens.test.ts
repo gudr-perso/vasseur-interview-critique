@@ -4,7 +4,8 @@ import { creerProjet, modifierProjet } from '../../server/services/projets'
 import { cloreQuestionnaire, enregistrerQuestionnaire, publierQuestionnaire } from '../../server/services/questionnaires'
 import { creerInvitation, creerRepondantGenerique } from '../../server/services/repondants'
 import { creerBaseDeTest } from '../helpers/d1'
-import { iaSimulee } from '../helpers/ia'
+import { espionner } from '../helpers/espion'
+import { attendre, iaSimulee } from '../helpers/ia'
 
 let base: Awaited<ReturnType<typeof creerBaseDeTest>>
 let projetId: string
@@ -26,8 +27,30 @@ beforeAll(async () => {
   projetId = (await creerProjet(base.db, { titre: 'Saisie des temps', type_demande: 'amelioration' })).id
   await modifierProjet(base.db, projetId, { note_cadrage: 'HYPOTHESE SECRETE', resume_contexte: 'Résumé public' })
   vi.spyOn(console, 'error').mockImplementation(() => {})
+  // Horloge simulée (Date seulement : les minuteries restent réelles pour les IA lentes).
+  vi.useFakeTimers({ toFake: ['Date'] })
+  vi.setSystemTime(new Date('2026-11-25T10:00:00Z'))
 })
-afterAll(async () => { await base.fermer() })
+afterAll(async () => {
+  vi.useRealTimers()
+  await base.fermer()
+})
+
+/** Fait avancer l'horloge simulée. */
+function avancer(secondes: number): void {
+  vi.setSystemTime(Date.now() + secondes * 1000)
+}
+
+async function suiteDe(jeton: string) {
+  return base.db.prepare('SELECT suite_debut, suite_essais, statut FROM repondants WHERE jeton = ?')
+    .bind(jeton).first<{ suite_debut: string | null; suite_essais: number; statut: string }>()
+}
+
+/** Attend que la condition soit vraie (calcul lancé en parallèle). */
+async function quand(condition: () => boolean): Promise<void> {
+  for (let i = 0; i < 200 && !condition(); i++) await attendre(10)
+  if (!condition()) throw new Error('condition jamais atteinte')
+}
 
 async function jetonPour(mode: 'hybride' | 'entretien', reglages: Record<string, number> = {}) {
   const q = await enregistrerQuestionnaire(base.db, {
@@ -124,11 +147,14 @@ describe('mode entretien', () => {
     const { ia } = iaSimulee(undefined, () => (enPanne ? 'erreur' : { fin: false, question: 'Reprenons ?', themes_couverts: [] }))
     const { jeton } = await jetonPour('entretien')
     await etapeCourante(base.db, jeton)
-    expect((await repondre(base.db, ia, jeton, 1, { texte: 'Réponse' })).etape).toEqual({ type: 'interrompu' })
-    expect((await etapeCourante(base.db, jeton)).etape).toEqual({ type: 'interrompu' })
-    expect((await relancerSuite(base.db, ia, jeton)).etape).toEqual({ type: 'interrompu' })
+    expect((await repondre(base.db, ia, jeton, 1, { texte: 'Réponse' })).etape).toEqual({ type: 'interrompu', reessai_possible: true })
+    expect((await etapeCourante(base.db, jeton)).etape).toEqual({ type: 'interrompu', reessai_possible: true })
+    avancer(11)
+    expect((await relancerSuite(base.db, ia, jeton)).etape).toEqual({ type: 'interrompu', reessai_possible: true })
     enPanne = false
+    avancer(11)
     expect((await relancerSuite(base.db, ia, jeton)).etape).toMatchObject({ question: { ordre: 2, libelle: 'Reprenons ?' } })
+    expect(await suiteDe(jeton)).toMatchObject({ suite_debut: null, suite_essais: 0 })
 
     const autre = await jetonPour('entretien')
     enPanne = true
@@ -154,13 +180,17 @@ describe('états particuliers', () => {
     const debuts = await Promise.all([etapeCourante(base.db, jeton), etapeCourante(base.db, jeton)])
     expect(debuts.map(e => e.etape)).toEqual([debuts[0].etape, debuts[0].etape])
     await repondre(base.db, ia, jeton, 1, { texte: 'Réponse' })
+    avancer(11)
     await relancerSuite(base.db, ia, jeton)
-    const reprises = await Promise.all([relancerSuite(base.db, ia, jeton), relancerSuite(base.db, ia, jeton)])
-    for (const reprise of reprises) expect(reprise.etape).toMatchObject({ type: 'question', question: { ordre: 2 } })
+    avancer(11)
+    const reprises = await Promise.allSettled([relancerSuite(base.db, ia, jeton), relancerSuite(base.db, ia, jeton)])
+    const etapes = reprises.flatMap(r => (r.status === 'fulfilled' ? [r.value.etape] : []))
+    expect(etapes.some(e => e.type === 'question' && e.question.ordre === 2)).toBe(true)
     const { results } = await base.db.prepare(
       'SELECT COUNT(*) AS n FROM tours t JOIN repondants r ON r.id = t.repondant_id WHERE r.jeton = ?',
     ).bind(jeton).all<{ n: number }>()
     expect(results[0].n).toBe(2)
+    expect(n).toBe(3)
   })
 
   it('affiche « clos » quand le questionnaire est clos en cours de route', async () => {
@@ -170,5 +200,131 @@ describe('états particuliers', () => {
     await cloreQuestionnaire(base.db, questionnaire.id)
     expect((await etapeCourante(base.db, jeton)).etape).toEqual({ type: 'clos' })
     await expect(repondre(base.db, ia, jeton, 1, { valeur: 'Jour' })).rejects.toMatchObject({ statut: 410 })
+  })
+})
+
+describe('calcul de la suite', () => {
+  const lente = (ms: number) => async () => {
+    await attendre(ms)
+    return { fin: false, question: 'Et ensuite ?', themes_couverts: [] }
+  }
+
+  it('deux envois simultanés de la même réponse : un seul appel à l\'IA, et personne ne voit « interrompu »', async () => {
+    const { ia, demandes } = iaSimulee(undefined, lente(300))
+    const { jeton } = await jetonPour('entretien')
+    await etapeCourante(base.db, jeton)
+    const etats = await Promise.all([
+      repondre(base.db, ia, jeton, 1, { texte: 'Le 30' }),
+      repondre(base.db, ia, jeton, 1, { texte: 'Le 30' }),
+    ])
+    expect(demandes.tour).toHaveLength(1)
+    for (const etat of etats) expect(['question', 'attente']).toContain(etat.etape.type)
+    expect(etats.some(e => e.etape.type === 'question')).toBe(true)
+    expect((await etapeCourante(base.db, jeton)).etape).toMatchObject({ type: 'question', question: { ordre: 2 } })
+  })
+
+  it('montre « attente » pendant le calcul, puis « interrompu » si le calcul a expiré', async () => {
+    const { ia, demandes } = iaSimulee(undefined, lente(300))
+    const { jeton } = await jetonPour('entretien')
+    await etapeCourante(base.db, jeton)
+    const envoi = repondre(base.db, ia, jeton, 1, { texte: 'Le 30' })
+    await quand(() => demandes.tour.length === 1)
+    expect((await etapeCourante(base.db, jeton)).etape).toEqual({ type: 'attente' })
+    // Un calcul de plus de 60 s est considéré comme abandonné.
+    avancer(61)
+    expect((await etapeCourante(base.db, jeton)).etape).toEqual({ type: 'interrompu', reessai_possible: true })
+    await envoi
+  })
+
+  it('20 « suivant » simultanés depuis « interrompu » : un seul nouvel appel à l\'IA', async () => {
+    let panne = true
+    const { ia, demandes } = iaSimulee(undefined, async () => {
+      if (panne) return 'erreur'
+      await attendre(300)
+      return { fin: false, question: 'Et ensuite ?', themes_couverts: [] }
+    })
+    const { jeton } = await jetonPour('entretien')
+    await etapeCourante(base.db, jeton)
+    expect((await repondre(base.db, ia, jeton, 1, { texte: 'Le 30' })).etape.type).toBe('interrompu')
+    expect(await suiteDe(jeton)).toMatchObject({ suite_debut: null, suite_essais: 1 })
+    panne = false
+    avancer(11)
+    const reprises = await Promise.allSettled(Array.from({ length: 20 }, () => relancerSuite(base.db, ia, jeton)))
+    expect(demandes.tour).toHaveLength(2)
+    for (const r of reprises) {
+      if (r.status === 'rejected') expect(r.reason).toMatchObject({ statut: 429 })
+      else expect(['question', 'attente']).toContain(r.value.etape.type)
+    }
+    expect((await etapeCourante(base.db, jeton)).etape).toMatchObject({ type: 'question', question: { ordre: 2 } })
+    expect(await suiteDe(jeton)).toMatchObject({ suite_debut: null, suite_essais: 0 })
+  })
+
+  it('« suivant » : trois nouveaux essais par étape, espacés de 10 secondes', async () => {
+    const { ia, demandes } = iaSimulee(undefined, () => 'erreur')
+    const { jeton } = await jetonPour('entretien')
+    await etapeCourante(base.db, jeton)
+    await repondre(base.db, ia, jeton, 1, { texte: 'Le 30' })
+
+    // Trop tôt après l'échec précédent.
+    avancer(5)
+    await expect(relancerSuite(base.db, ia, jeton)).rejects.toMatchObject({ statut: 429 })
+    expect(demandes.tour).toHaveLength(1)
+
+    for (const essais of [2, 3, 4]) {
+      avancer(11)
+      const etat = await relancerSuite(base.db, ia, jeton)
+      expect(etat.etape).toEqual({ type: 'interrompu', reessai_possible: essais < 4 })
+      expect(await suiteDe(jeton)).toMatchObject({ suite_debut: null, suite_essais: essais })
+    }
+    avancer(11)
+    await expect(relancerSuite(base.db, ia, jeton)).rejects.toMatchObject({ statut: 429, message: expect.stringMatching(/terminer/i) })
+    expect(demandes.tour).toHaveLength(4)
+    // Terminer reste possible.
+    expect((await terminer(base.db, jeton)).etape).toEqual({ type: 'termine' })
+  })
+
+  it('refuse de terminer pendant un calcul en cours', async () => {
+    const { ia, demandes } = iaSimulee(undefined, lente(300))
+    const { jeton } = await jetonPour('entretien')
+    await etapeCourante(base.db, jeton)
+    const envoi = repondre(base.db, ia, jeton, 1, { texte: 'Le 30' })
+    await quand(() => demandes.tour.length === 1)
+    await expect(terminer(base.db, jeton)).rejects.toMatchObject({ statut: 409 })
+    expect((await envoi).etape).toMatchObject({ type: 'question', question: { ordre: 2 } })
+    expect(await suiteDe(jeton)).toMatchObject({ statut: 'commence' })
+  })
+
+  it('ne pose rien si l\'entretien a été clos pendant le calcul', async () => {
+    const { ia, demandes } = iaSimulee(undefined, lente(300))
+    const { jeton } = await jetonPour('entretien')
+    await etapeCourante(base.db, jeton)
+    const envoi = repondre(base.db, ia, jeton, 1, { texte: 'Le 30' })
+    await quand(() => demandes.tour.length === 1)
+    await base.db.prepare("UPDATE repondants SET statut = 'termine' WHERE jeton = ?").bind(jeton).run()
+    expect((await envoi).etape).toEqual({ type: 'termine' })
+    const { results } = await base.db.prepare(
+      'SELECT COUNT(*) AS n FROM tours t JOIN repondants r ON r.id = t.repondant_id WHERE r.jeton = ?',
+    ).bind(jeton).all<{ n: number }>()
+    expect(results[0].n).toBe(1)
+  })
+
+  it('donne « Lien invalide » si le répondant est supprimé pendant le calcul', async () => {
+    const { ia, demandes } = iaSimulee(undefined, lente(300))
+    const { jeton } = await jetonPour('entretien')
+    await etapeCourante(base.db, jeton)
+    const envoi = repondre(base.db, ia, jeton, 1, { texte: 'Le 30' })
+    await quand(() => demandes.tour.length === 1)
+    await base.db.prepare('DELETE FROM repondants WHERE jeton = ?').bind(jeton).run()
+    await expect(envoi).rejects.toMatchObject({ statut: 404, message: 'Lien invalide.' })
+  })
+
+  it('traduit une contrainte de clé étrangère à l\'insertion d\'un tour en « Lien invalide »', async () => {
+    const { ia } = iaSimulee(undefined, () => ({ fin: false, question: 'Et ensuite ?', themes_couverts: [] }))
+    const { jeton } = await jetonPour('entretien')
+    await etapeCourante(base.db, jeton)
+    const { db } = espionner(base.db, sql => {
+      if (/INSERT INTO tours/.test(sql)) throw new Error('D1_ERROR: FOREIGN KEY constraint failed: SQLITE_CONSTRAINT')
+    })
+    await expect(repondre(db, ia, jeton, 1, { texte: 'Le 30' })).rejects.toMatchObject({ statut: 404, message: 'Lien invalide.' })
   })
 })

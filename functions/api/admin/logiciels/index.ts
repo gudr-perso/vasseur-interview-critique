@@ -1,4 +1,4 @@
-import { lireCorps, route } from '../../../../server/api'
+import { CORPS_ADMIN_MAX, lireCorps, route } from '../../../../server/api'
 import { ErreurMetier } from '../../../../server/erreurs'
 import { json } from '../../../../server/http'
 import { schemaLogiciel } from '../../../../server/schemas'
@@ -7,7 +7,7 @@ import { enregistrerLogiciel, listerLogiciels, memeNom } from '../../../../serve
 export const onRequestGet = route(async ({ env }) => json(await listerLogiciels(env.DB)))
 
 export const onRequestPost = route(async ({ request, env }) => {
-  const saisie = await lireCorps(request, schemaLogiciel)
+  const saisie = await lireCorps(request, schemaLogiciel, CORPS_ADMIN_MAX)
   // Le service, pensé pour Claude, met à jour une fiche de même nom ; ici, créer un doublon est une erreur de saisie.
   if ((await listerLogiciels(env.DB)).some(l => memeNom(l.nom, saisie.nom))) {
     throw new ErreurMetier(`Un logiciel nommé « ${saisie.nom.trim()} » existe déjà.`, 409)

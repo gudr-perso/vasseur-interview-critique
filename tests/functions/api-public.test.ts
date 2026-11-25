@@ -151,13 +151,24 @@ describe('parcours', () => {
     const p = { jeton }
     const interrompu = await appelerPublic(reponses.onRequestPost, 'POST', '/x', p, { ordre: 1, reponse: { texte: 'Voilà' } })
     expect(interrompu.statut).toBe(200)
-    expect(interrompu.donnees.etape).toEqual({ type: 'interrompu' })
+    expect(interrompu.donnees.etape).toEqual({ type: 'interrompu', reessai_possible: true })
 
+    // Nouvel essai trop rapproché : refusé en 429, avec un message lisible.
     const encore = await appelerPublic(suivant.onRequestPost, 'POST', '/x', p)
-    expect(encore.donnees.etape).toEqual({ type: 'interrompu' })
+    expect(encore.statut).toBe(429)
+    expect(encore.donnees.error.message).toMatch(/Patientez/)
+    expect(encore.reponse.headers.get('Cache-Control')).toBe('no-store')
 
     const fin = await appelerPublic(terminer.onRequestPost, 'POST', '/x', p)
     expect(fin.donnees.etape).toEqual({ type: 'termine' })
+  })
+
+  it('refuse un corps de plus de 64 Ko en 413', async () => {
+    const q = await ouvrir('hybride')
+    const jeton = await sInscrire(q.code)
+    const r = await appelerPublic(reponses.onRequestPost, 'POST', '/x', { jeton }, { ordre: 1, reponse: { texte: 'a'.repeat(70_000) } })
+    expect(r.statut).toBe(413)
+    expect(r.donnees.error.message).toMatch(/64 Ko/)
   })
 
   it('refuse un corps de réponse invalide et un jeton inconnu', async () => {

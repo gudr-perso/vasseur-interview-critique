@@ -29,6 +29,41 @@ describe('IA Anthropic', () => {
     expect(corps.system).toContain('vouvo')
     expect(corps.output_config.effort).toBe('low')
     expect(corps.output_config.format.type).toBe('json_schema')
+    // Petit JSON en sortie, mais la réflexion du modèle compte aussi : une borne basse garde l'appel court.
+    expect(corps.max_tokens).toBe(3_000)
+  })
+
+  it("ne refait qu'un seul essai sur une erreur passagère", async () => {
+    const appel = vi.fn(async () => new Response(
+      JSON.stringify({ type: 'error', error: { type: 'overloaded_error', message: 'x' } }), { status: 529 },
+    ))
+    await expect(ia(appel as never).deciderRelance(demandeRelance)).rejects.toThrow(ErreurIa)
+    expect(appel).toHaveBeenCalledTimes(2)
+  })
+
+  it('abandonne un appel au bout de 12 secondes, et tout essai compris en moins de 30', async () => {
+    vi.useFakeTimers()
+    try {
+      const signaux: AbortSignal[] = []
+      const appel = vi.fn((_url: string, init: RequestInit) => {
+        const signal = init.signal!
+        signaux.push(signal)
+        return new Promise<Response>((_, refuser) => {
+          signal.addEventListener('abort', () => refuser(new DOMException('abandon', 'AbortError')))
+        })
+      })
+      let fin: unknown = 'en cours'
+      void ia(appel as never).deciderRelance(demandeRelance).catch(e => { fin = e })
+      await vi.advanceTimersByTimeAsync(11_000)
+      expect(signaux[0].aborted).toBe(false)
+      await vi.advanceTimersByTimeAsync(1_100)
+      expect(signaux[0].aborted).toBe(true)
+      await vi.advanceTimersByTimeAsync(30_000 - 12_100)
+      expect(fin).toBeInstanceOf(ErreurIa)
+      expect(appel).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('traite comme « pas de relance » une question vide quand relancer est vrai', async () => {

@@ -1,4 +1,4 @@
-import { lireCorps, parametre, route } from '../../../../../server/api'
+import { CORPS_ADMIN_MAX, lireCorps, parametre, route } from '../../../../../server/api'
 import { json } from '../../../../../server/http'
 import { schemaModificationProjet } from '../../../../../server/schemas'
 import { compterEntretiens, lireProjet, modifierProjet, supprimerProjet } from '../../../../../server/services/projets'
@@ -13,7 +13,7 @@ export const onRequestGet = route<'id'>(async ({ env, params }) => {
 })
 
 export const onRequestPut = route<'id'>(async ({ request, env, params }) => {
-  const modifs = await lireCorps(request, schemaModificationProjet)
+  const modifs = await lireCorps(request, schemaModificationProjet, CORPS_ADMIN_MAX)
   return json(versProjetFiche(await modifierProjet(env.DB, parametre(params.id), modifs)))
 })
 

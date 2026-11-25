@@ -106,7 +106,9 @@ describe('invitations et suivi', () => {
       base.db.prepare("INSERT INTO repondants (id, questionnaire_id, jeton, origine) VALUES (?, ?, ?, 'lien_generique')")
         .bind(`g${i}`, q.id, `jeton-g${i}`))
     await base.db.batch(lignes)
-    await expect(creerRepondantGenerique(base.db, q.code, identite)).rejects.toMatchObject({ statut: 409 })
+    await expect(creerRepondantGenerique(base.db, q.code, identite)).rejects.toMatchObject({
+      statut: 409, message: 'Ce questionnaire a atteint son nombre maximal de participants.',
+    })
     // Les invitations ne comptent pas dans ce plafond.
     await expect(creerInvitation(base.db, q.id, identite)).resolves.toMatchObject({ statut: 'invite' })
   })

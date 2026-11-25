@@ -38,16 +38,26 @@ function refusEffort(e: unknown): boolean {
   return e instanceof Anthropic.BadRequestError && /effort/i.test(e.message)
 }
 
+/**
+ * Un répondant attend la réponse : 12 s par appel et un seul nouvel essai (le SDK le fait sur 408, 409, 429 et 5xx),
+ * soit une trentaine de secondes au pire, sous l'expiration de 60 s du calcul de la suite.
+ */
+const DELAI_APPEL_MS = 12_000
+const NOUVEAUX_ESSAIS = 1
+/** La sortie est un petit JSON, mais la réflexion du modèle compte dans cette borne. */
+const JETONS_MAX = 3_000
+
 export function creerIaAnthropic(options: OptionsIa): Ia {
-  // Un répondant attend la réponse : délai court et un seul nouvel essai (le SDK le fait sur 408, 409, 429 et 5xx).
-  const client = new Anthropic({ apiKey: options.cleApi, timeout: 25_000, maxRetries: 1, fetch: options.fetch })
+  const client = new Anthropic({
+    apiKey: options.cleApi, timeout: DELAI_APPEL_MS, maxRetries: NOUVEAUX_ESSAIS, fetch: options.fetch,
+  })
 
   async function demander<S extends z.ZodType>(
     consigne: string, message: string, schema: S, effort: Effort,
   ): Promise<z.infer<S>> {
     const appeler = (avecEffort: boolean) => client.messages.parse({
       model: options.modele,
-      max_tokens: 8_000,
+      max_tokens: JETONS_MAX,
       system: consigne,
       messages: [{ role: 'user', content: message }],
       output_config: { format: zodOutputFormat(schema), ...(avecEffort ? { effort } : {}) },

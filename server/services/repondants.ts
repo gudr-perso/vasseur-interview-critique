@@ -7,7 +7,7 @@ import { maintenantIso, nouveauJeton, nouvelId } from '../ids'
 import { estInvisible } from './limites'
 import { lireQuestionnaire, type Questionnaire } from './questionnaires'
 
-const MSG_PLAFOND = 'Ce questionnaire a atteint son nombre maximal de participants'
+const MSG_PLAFOND = 'Ce questionnaire a atteint son nombre maximal de participants.'
 
 function champ(valeur: unknown): string {
   if (typeof valeur !== 'string') return ''

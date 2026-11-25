@@ -1,4 +1,4 @@
-import { lireCorps, parametre, route } from '../../../../server/api'
+import { CORPS_ADMIN_MAX, lireCorps, parametre, route } from '../../../../server/api'
 import { json } from '../../../../server/http'
 import { schemaLogiciel } from '../../../../server/schemas'
 import { enregistrerLogiciel, lireLogiciel } from '../../../../server/services/logiciels'
@@ -6,6 +6,6 @@ import { enregistrerLogiciel, lireLogiciel } from '../../../../server/services/l
 export const onRequestGet = route<'id'>(async ({ env, params }) => json(await lireLogiciel(env.DB, parametre(params.id))))
 
 export const onRequestPut = route<'id'>(async ({ request, env, params }) => {
-  const saisie = await lireCorps(request, schemaLogiciel)
+  const saisie = await lireCorps(request, schemaLogiciel, CORPS_ADMIN_MAX)
   return json(await enregistrerLogiciel(env.DB, { id: parametre(params.id), ...saisie }))
 })
