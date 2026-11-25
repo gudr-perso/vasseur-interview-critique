@@ -41,4 +41,25 @@ describe('logiciels', () => {
     await expect(enregistrerLogiciel(base.db, { id: autre.id, nom: 'Zeendoc' })).rejects.toMatchObject({ statut: 409 })
     await expect(lireLogiciel(base.db, 'inconnu')).rejects.toMatchObject({ statut: 404 })
   })
+
+  describe('noms comparés sans tenir compte de la casse, accents compris', () => {
+    it('à la création sans identifiant, « éditeur » désigne la fiche « Éditeur »', async () => {
+      const editeur = await enregistrerLogiciel(base.db, { nom: 'Éditeur' })
+      const avant = (await listerLogiciels(base.db)).length
+      const maj = await enregistrerLogiciel(base.db, { nom: 'éditeur', contexte: 'Mis à jour' })
+      expect(maj).toMatchObject({ id: editeur.id, nom: 'Éditeur', contexte: 'Mis à jour' })
+      expect((await listerLogiciels(base.db)).length).toBe(avant)
+    })
+
+    it('refuse de renommer un autre logiciel en « éditeur »', async () => {
+      const autre = await enregistrerLogiciel(base.db, { nom: 'Gestion' })
+      await expect(enregistrerLogiciel(base.db, { id: autre.id, nom: 'éditeur' })).rejects.toMatchObject({ statut: 409 })
+      await expect(enregistrerLogiciel(base.db, { id: autre.id, nom: 'ÉDITEUR' })).rejects.toMatchObject({ statut: 409 })
+    })
+
+    it('laisse un logiciel changer la casse de son propre nom', async () => {
+      const elan = await enregistrerLogiciel(base.db, { nom: 'élan' })
+      expect((await enregistrerLogiciel(base.db, { id: elan.id, nom: 'Élan' })).nom).toBe('Élan')
+    })
+  })
 })

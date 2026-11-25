@@ -1,5 +1,6 @@
 import { clsx } from 'clsx'
 import type { InputHTMLAttributes, ReactNode } from 'react'
+import { nombre } from './libelles'
 
 export const CLASSE_LIBELLE = 'block font-mono text-[0.66rem] uppercase tracking-wider text-muted mb-1.5'
 export const CLASSE_CHAMP =
@@ -81,8 +82,32 @@ interface ChampZoneProps extends ChampCommun {
   placeholder?: string
 }
 
+/** Seuil à partir duquel le compteur de caractères s'affiche, en part de la limite. */
+const SEUIL_COMPTEUR = 0.8
+
+/** Compteur « n / max » à afficher (dès 80 % de la limite), et si la limite est atteinte. */
+export function etatLongueur(longueur: number, max: number): { compteur: string | null; atteinte: boolean } {
+  if (longueur < max * SEUIL_COMPTEUR) return { compteur: null, atteinte: false }
+  return { compteur: `${nombre(longueur)} / ${nombre(max)}`, atteinte: longueur >= max }
+}
+
+/** Sous un grand champ : le navigateur coupe sans prévenir un collage trop long, le compteur le rend visible. */
+function Compteur({ id, longueur, max }: { id: string; longueur: number; max: number }) {
+  const { compteur, atteinte } = etatLongueur(longueur, max)
+  if (!compteur) return null
+  return (
+    <p id={id} aria-live="polite" className={clsx(CLASSE_AIDE, 'font-mono', atteinte && 'text-red')}>
+      {compteur}
+      {atteinte && ' — limite atteinte : le texte au-delà a été coupé.'}
+    </p>
+  )
+}
+
 export function ChampZone(props: ChampZoneProps) {
   const { id, libelle, aide, erreur, className, valeur, onChange, lignes, ...reste } = props
+  const idCompteur = `${id}-compteur`
+  const avecCompteur = props.maxLength !== undefined && etatLongueur(valeur.length, props.maxLength).compteur !== null
+  const decrit = [decritPar(props), avecCompteur ? idCompteur : undefined].filter(Boolean).join(' ') || undefined
   return (
     <Champ id={id} libelle={libelle} aide={aide} erreur={erreur} className={className}>
       <textarea
@@ -90,11 +115,12 @@ export function ChampZone(props: ChampZoneProps) {
         rows={lignes}
         value={valeur}
         onChange={e => onChange(e.target.value)}
-        aria-describedby={decritPar(props)}
+        aria-describedby={decrit}
         aria-invalid={erreur ? true : undefined}
         className={clsx(CLASSE_CHAMP, 'leading-relaxed block')}
         {...reste}
       />
+      {props.maxLength !== undefined && <Compteur id={idCompteur} longueur={valeur.length} max={props.maxLength} />}
     </Champ>
   )
 }

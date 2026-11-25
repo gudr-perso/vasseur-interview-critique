@@ -1,5 +1,5 @@
 import { useRef, useState, type ChangeEvent, type FormEvent } from 'react'
-import { LIMITES, type DocumentProjet } from '../../shared/interviews'
+import { LIMITES, enteteDocument, type EnteteDocument } from '../../shared/interviews'
 import { Button } from '../components/ui/Button'
 import { api } from './api'
 import { ChampTexte, ChampZone } from './champs'
@@ -11,12 +11,12 @@ import { SectionFiche } from './SectionFiche'
 
 interface Props {
   projetId: string
-  documents: DocumentProjet[]
-  onAjoute: (document: DocumentProjet) => void
+  documents: EnteteDocument[]
+  onAjoute: (document: EnteteDocument) => void
   onSupprime: (id: string) => void
 }
 
-function LigneDocument({ document, onSupprime }: { document: DocumentProjet; onSupprime: (id: string) => void }) {
+function LigneDocument({ document, onSupprime }: { document: EnteteDocument; onSupprime: (id: string) => void }) {
   const action = useAction()
 
   const supprimer = () => {
@@ -32,7 +32,7 @@ function LigneDocument({ document, onSupprime }: { document: DocumentProjet; onS
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
         <div className="min-w-0">
           <div className="text-[0.88rem] break-words">{document.nom}</div>
-          <div className="font-mono text-[0.62rem] text-muted">{nombre(document.contenu.length)} caractères</div>
+          <div className="font-mono text-[0.62rem] text-muted">{nombre(document.taille)} caractères</div>
         </div>
         <Button variant="danger" size="sm" loading={action.enCours} onClick={supprimer} aria-label={`Supprimer le document ${document.nom}`}>
           Supprimer
@@ -74,7 +74,7 @@ export function ProjetDocuments({ projetId, documents, onAjoute, onSupprime }: P
     if (occupe) return
     if (!nom.trim() || !texte.trim()) return action.signaler('Le nom et le texte du document sont obligatoires.')
     await action.lancer(async () => {
-      onAjoute(await api.projets.ajouterDocument(projetId, { nom, contenu: texte }))
+      onAjoute(enteteDocument(await api.projets.ajouterDocument(projetId, { nom, contenu: texte })))
       setNom('')
       setTexte('')
     })

@@ -83,6 +83,12 @@ describe('erreurs', () => {
     expect(resultat.content[0].text).toContain('type_demande')
   })
 
+  it('explique en français un argument du mauvais type', async () => {
+    const resultat = await appelerOutil(ctx, 'creer_projet', { titre: 5, type_demande: 'amelioration' })
+    expect(resultat.isError).toBe(true)
+    expect(resultat.content[0].text).toContain('titre : Entrée invalide : chaîne de caractères attendu, nombre reçu')
+  })
+
   it('refuse un outil inconnu', async () => {
     const resultat = await appelerOutil(ctx, 'supprimer_projet', {})
     expect(resultat).toEqual({ content: [{ type: 'text', text: 'Outil inconnu : supprimer_projet' }], isError: true })

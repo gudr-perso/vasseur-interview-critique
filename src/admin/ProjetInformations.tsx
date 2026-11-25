@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import {
   LIMITES, STATUTS_PROJET, TYPES_DEMANDE,
-  type Logiciel, type ProjetComplet, type StatutProjet, type TypeDemande,
+  type Logiciel, type ProjetFiche, type StatutProjet, type TypeDemande,
 } from '../../shared/interviews'
 import { api } from './api'
 import { CasesLogiciels } from './CasesLogiciels'
@@ -24,9 +24,9 @@ const OPTIONS_TYPE = optionsDe(TYPES_DEMANDE, LIBELLES_TYPE_DEMANDE)
 const OPTIONS_STATUT = optionsDe(STATUTS_PROJET, LIBELLES_STATUT_PROJET)
 
 interface Props {
-  projet: ProjetComplet
+  projet: ProjetFiche
   logiciels: Logiciel[]
-  onMaj: (projet: ProjetComplet) => void
+  onMaj: (projet: ProjetFiche) => void
 }
 
 export function ProjetInformations({ projet, logiciels, onMaj }: Props) {

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { ProjetComplet } from '../../shared/interviews'
+import type { ProjetFiche } from '../../shared/interviews'
 import type { Etape } from '../../shared/modeles'
 import { ModelSelector } from '../components/ui/ModelSelector'
 import { api } from './api'
@@ -15,7 +15,7 @@ const ETAPES: { etape: Etape; libelle: string }[] = [
   { etape: 'analyse', libelle: 'Analyse' },
 ]
 
-export function ProjetModeles({ projet, onMaj }: { projet: ProjetComplet; onMaj: (projet: ProjetComplet) => void }) {
+export function ProjetModeles({ projet, onMaj }: { projet: ProjetFiche; onMaj: (projet: ProjetFiche) => void }) {
   const [saisie, setSaisie] = useState<Partial<Record<Etape, string>>>({})
   const action = useAction()
 

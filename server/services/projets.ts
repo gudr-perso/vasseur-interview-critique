@@ -88,12 +88,32 @@ export async function listerProjets(
   return results
 }
 
+const COLONNES_MODELE: Record<Etape, string> = {
+  cadrage: 'modele_cadrage',
+  interview: 'modele_interview',
+  analyse: 'modele_analyse',
+}
+
+/** Modèles fournis, nettoyés : chacun non vide et de longueur bornée. Les étapes omises restent absentes. */
+function lireModeles(modeles: Partial<Record<Etape, string>> | undefined): Partial<Record<Etape, string>> {
+  const lus: Partial<Record<Etape, string>> = {}
+  for (const etape of Object.keys(COLONNES_MODELE) as Etape[]) {
+    const modele = modeles?.[etape]
+    if (modele === undefined) continue
+    if (typeof modele !== 'string' || !modele.trim()) throw new ErreurMetier(`Le modèle « ${etape} » est obligatoire.`)
+    verifierLongueur(modele.trim(), LIMITES.modele, `Modèle « ${etape} » trop long`)
+    lus[etape] = modele.trim()
+  }
+  return lus
+}
+
 export async function creerProjet(db: D1Database, saisie: CreationProjet): Promise<ProjetComplet> {
   const titre = saisie.titre.trim()
   if (!titre) throw new ErreurMetier('Le titre du projet est obligatoire.')
   verifierLongueur(titre, LIMITES.titre_projet, 'Titre du projet trop long')
   const description = saisie.description ?? ''
   verifierLongueur(description, LIMITES.description, 'Description trop longue')
+  const modeles = lireModeles(saisie.modeles)
   const logicielIds = await verifierLogiciels(db, saisie.logiciel_ids ?? [])
   const id = nouvelId()
   const maintenant = maintenantIso()
@@ -104,9 +124,9 @@ export async function creerProjet(db: D1Database, saisie: CreationProjet): Promi
        VALUES (?,?,?,?,?,?,?,?,?)`,
     ).bind(
       id, titre, saisie.type_demande, description,
-      saisie.modeles?.cadrage ?? DEFAUTS.cadrage,
-      saisie.modeles?.interview ?? DEFAUTS.interview,
-      saisie.modeles?.analyse ?? DEFAUTS.analyse,
+      modeles.cadrage ?? DEFAUTS.cadrage,
+      modeles.interview ?? DEFAUTS.interview,
+      modeles.analyse ?? DEFAUTS.analyse,
       maintenant, maintenant,
     ),
     ...insererLiens(db, id, logicielIds),
@@ -115,12 +135,6 @@ export async function creerProjet(db: D1Database, saisie: CreationProjet): Promi
 }
 
 const CHAMPS_MODIFIABLES = ['titre', 'type_demande', 'description', 'note_cadrage', 'resume_contexte', 'statut'] as const
-
-const COLONNES_MODELE: Record<Etape, string> = {
-  cadrage: 'modele_cadrage',
-  interview: 'modele_interview',
-  analyse: 'modele_analyse',
-}
 
 export async function modifierProjet(
   db: D1Database, id: string, modifs: ModificationProjet,
@@ -131,11 +145,8 @@ export async function modifierProjet(
     const valeur = modifs[champ]
     if (valeur !== undefined) maj[champ] = champ === 'titre' ? valeur.trim() : valeur
   }
-  for (const etape of Object.keys(COLONNES_MODELE) as Etape[]) {
-    const modele = modifs.modeles?.[etape]
-    if (modele === undefined) continue
-    if (typeof modele !== 'string' || !modele.trim()) throw new ErreurMetier(`Le modèle « ${etape} » est obligatoire.`)
-    maj[COLONNES_MODELE[etape]] = modele.trim()
+  for (const [etape, modele] of Object.entries(lireModeles(modifs.modeles)) as [Etape, string][]) {
+    maj[COLONNES_MODELE[etape]] = modele
   }
   if (maj.titre !== undefined && !maj.titre) throw new ErreurMetier('Le titre du projet est obligatoire.')
   if (maj.titre !== undefined) verifierLongueur(maj.titre, LIMITES.titre_projet, 'Titre du projet trop long')

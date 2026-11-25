@@ -1,5 +1,5 @@
 import type {
-  Contenu, DocumentProjet, Logiciel, Mode, ProjetComplet, ProjetResume, Questionnaire, StatutProjet, TypeDemande,
+  Contenu, DocumentProjet, Logiciel, Mode, ProjetComplet, ProjetFiche, ProjetResume, Questionnaire, StatutProjet, TypeDemande,
 } from '../../shared/interviews'
 import type { Etape } from '../../shared/modeles'
 
@@ -53,7 +53,7 @@ export interface SaisieQuestionnaire {
   tours_max?: number
 }
 
-export type ProjetAdmin = ProjetComplet & { nb_entretiens: number }
+export type ProjetAdmin = ProjetFiche & { nb_entretiens: number }
 
 export const api = {
   logiciels: {
@@ -71,7 +71,7 @@ export const api = {
     },
     lire: (id: string) => appel<ProjetAdmin>('GET', `/projets/${id}`),
     creer: (saisie: SaisieProjet & { titre: string; type_demande: TypeDemande }) => appel<ProjetComplet>('POST', '/projets', saisie),
-    modifier: (id: string, saisie: SaisieProjet) => appel<ProjetComplet>('PUT', `/projets/${id}`, saisie),
+    modifier: (id: string, saisie: SaisieProjet) => appel<ProjetFiche>('PUT', `/projets/${id}`, saisie),
     supprimer: (id: string) => appel<void>('DELETE', `/projets/${id}`),
     ajouterDocument: (id: string, saisie: { nom: string; contenu: string }) =>
       appel<DocumentProjet>('POST', `/projets/${id}/documents`, saisie),

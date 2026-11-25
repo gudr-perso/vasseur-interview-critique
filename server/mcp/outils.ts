@@ -1,4 +1,4 @@
-import { z } from 'zod'
+import { z } from '../zod'
 import { ErreurMetier } from '../erreurs'
 import { ETAPES_GUIDE, lireGuide } from '../guides'
 import { enregistrerLogiciel, lireLogiciel, listerLogiciels } from '../services/logiciels'

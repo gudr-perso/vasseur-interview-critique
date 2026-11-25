@@ -1,9 +1,8 @@
 import { LIMITES, MODES, type Mode } from '../../shared/interviews'
 import { Card } from '../components/ui/Card'
 import { ChampListe, ChampTexte, ChampZone } from './champs'
-import { contenuVide } from './contenu'
 import { LIBELLES_MODE, optionsDe } from './libelles'
-import { BORNES, TOURS_PAR_DEFAUT, type Brouillon } from './questionnaireBrouillon'
+import { BORNES, modifsChangementMode, type Brouillon } from './questionnaireBrouillon'
 
 const OPTIONS_MODE = optionsDe(MODES, LIBELLES_MODE)
 
@@ -17,8 +16,7 @@ export function QuestionnaireReglages({ brouillon, onChange }: { brouillon: Brou
   const changerMode = (mode: Mode) => {
     if (mode === brouillon.mode) return
     if (!window.confirm('Changer de mode efface les questions saisies.')) return
-    // Le plafond de tours n'a pas le même sens d'un mode à l'autre : il repart de la valeur par défaut du mode.
-    onChange({ mode, contenu: contenuVide(mode), tours: String(TOURS_PAR_DEFAUT[mode]) })
+    onChange(modifsChangementMode(mode))
   }
 
   return (

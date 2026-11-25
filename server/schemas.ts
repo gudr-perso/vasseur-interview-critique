@@ -1,4 +1,4 @@
-import { z } from 'zod'
+import { z } from './zod'
 import { MODES, STATUTS_PROJET, TYPES_DEMANDE } from '../shared/interviews'
 
 // Ces schémas vérifient la forme ; les règles (longueurs, unicité, statuts) restent dans les services.

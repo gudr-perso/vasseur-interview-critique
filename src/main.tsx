@@ -9,13 +9,15 @@ import { ProjetScreen } from './admin/ProjetScreen'
 import { ProjetsScreen } from './admin/ProjetsScreen'
 import { QuestionnaireScreen } from './admin/QuestionnaireScreen'
 import { RequireAdmin } from './routes/RequireAdmin'
+import { ErreurRoute } from './screens/ErreurRoute'
 import { NotFound } from './screens/NotFound'
 import './index.css'
 
 // Routeur « de données » : nécessaire à `useBlocker`, qui protège les saisies non enregistrées de l'admin.
 const routeur = createBrowserRouter(
   createRoutesFromElements(
-    <>
+    // Route sans chemin : une exception au rendu de n'importe quel écran affiche `ErreurRoute`.
+    <Route errorElement={<ErreurRoute />}>
       <Route path="/" element={<RequireAdmin><App /></RequireAdmin>} />
       <Route path="/admin" element={<RequireAdmin><AdminLayout /></RequireAdmin>}>
         <Route index element={<ProjetsScreen />} />
@@ -25,7 +27,7 @@ const routeur = createBrowserRouter(
         <Route path="questionnaires/:id" element={<QuestionnaireScreen />} />
       </Route>
       <Route path="*" element={<NotFound />} />
-    </>,
+    </Route>,
   ),
 )
 

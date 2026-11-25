@@ -12,6 +12,11 @@ export interface SaisieLogiciel {
   contexte?: string
 }
 
+/** Deux noms désignent le même logiciel, casse ignorée, lettres accentuées comprises. */
+export function memeNom(a: string, b: string): boolean {
+  return a.trim().toLocaleLowerCase('fr') === b.trim().toLocaleLowerCase('fr')
+}
+
 export async function listerLogiciels(db: D1Database): Promise<Logiciel[]> {
   const { results } = await db.prepare('SELECT * FROM logiciels ORDER BY nom COLLATE NOCASE').all<Logiciel>()
   return results
@@ -34,9 +39,11 @@ export async function enregistrerLogiciel(db: D1Database, saisie: SaisieLogiciel
   if (saisie.contexte !== undefined) verifierLongueur(saisie.contexte, LIMITES.contexte_logiciel, 'Contexte du logiciel trop long')
   const maintenant = maintenantIso()
 
+  // Comparaison faite ici : `COLLATE NOCASE` ne plie que l'ASCII (« éditeur » y diffère de « Éditeur »).
+  const tous = await listerLogiciels(db)
   const existant = saisie.id
     ? await lireLogiciel(db, saisie.id)
-    : await db.prepare('SELECT * FROM logiciels WHERE nom = ? COLLATE NOCASE').bind(nom).first<Logiciel>()
+    : tous.find(l => memeNom(l.nom, nom))
 
   if (!existant) {
     const id = nouvelId()
@@ -47,10 +54,8 @@ export async function enregistrerLogiciel(db: D1Database, saisie: SaisieLogiciel
 
   // Sans `id`, on garde le nom tel qu'il a été saisi la première fois.
   const nouveauNom = saisie.id ? nom : existant.nom
-  if (nouveauNom.toLowerCase() !== existant.nom.toLowerCase()) {
-    const doublon = await db.prepare('SELECT id FROM logiciels WHERE nom = ? COLLATE NOCASE AND id <> ?')
-      .bind(nouveauNom, existant.id).first()
-    if (doublon) throw new ErreurMetier(`Un logiciel nommé « ${nouveauNom} » existe déjà.`, 409)
+  if (tous.some(l => l.id !== existant.id && memeNom(l.nom, nouveauNom))) {
+    throw new ErreurMetier(`Un logiciel nommé « ${nouveauNom} » existe déjà.`, 409)
   }
   await db.prepare('UPDATE logiciels SET nom = ?, contexte = ?, maj_le = ? WHERE id = ?')
     .bind(nouveauNom, saisie.contexte ?? existant.contexte, maintenant, existant.id).run()

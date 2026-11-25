@@ -51,10 +51,24 @@ describe('logiciels', () => {
     expect(inconnu).toEqual({ statut: 404, donnees: { error: { message: 'Logiciel introuvable : x' } } })
   })
 
+  it('refuse un doublon accentué, à la création comme au renommage', async () => {
+    expect((await appeler(logiciels.onRequestPost, 'POST', '/api/admin/logiciels', { nom: 'Éditeur' })).statut).toBe(201)
+    expect((await appeler(logiciels.onRequestPost, 'POST', '/api/admin/logiciels', { nom: 'éditeur' })).statut).toBe(409)
+    const autre = await appeler(logiciels.onRequestPost, 'POST', '/api/admin/logiciels', { nom: 'Gestion' })
+    const renomme = await appeler(logicielsId.onRequestPut, 'PUT', `/api/admin/logiciels/${autre.donnees.id}`, { nom: 'éditeur' }, autre.donnees.id)
+    expect(renomme.statut).toBe(409)
+  })
+
   it('refuse un corps invalide', async () => {
     const reponse = await appeler(logiciels.onRequestPost, 'POST', '/api/admin/logiciels', { nom: '' })
     expect(reponse.statut).toBe(400)
     expect(reponse.donnees.error.message).toContain('nom')
+  })
+
+  it('explique en français un champ du mauvais type', async () => {
+    const reponse = await appeler(logiciels.onRequestPost, 'POST', '/api/admin/logiciels', { nom: 12 })
+    expect(reponse.statut).toBe(400)
+    expect(reponse.donnees.error.message).toBe('Données invalides — nom : Entrée invalide : chaîne de caractères attendu, nombre reçu')
   })
 })
 
@@ -83,8 +97,16 @@ describe('projets, documents et questionnaires', () => {
   })
 
   it('ajoute puis supprime un document', async () => {
-    const doc = await appeler(projetDocuments.onRequestPost, 'POST', `/api/admin/projets/${projet}/documents`, { nom: 'a.md', contenu: '# A' }, projet)
+    const doc = await appeler(projetDocuments.onRequestPost, 'POST', `/api/admin/projets/${projet}/documents`, { nom: 'a.md', contenu: '# A 😀' }, projet)
     expect(doc.statut).toBe(201)
+
+    // La fiche n'affiche que la taille : le contenu des documents ne part pas avec le projet.
+    const attendu = [{ id: doc.donnees.id, nom: 'a.md', taille: 5, cree_le: doc.donnees.cree_le }]
+    const lu = await appeler(projetId.onRequestGet, 'GET', `/api/admin/projets/${projet}`, undefined, projet)
+    expect(lu.donnees.documents).toEqual(attendu)
+    const maj = await appeler(projetId.onRequestPut, 'PUT', `/api/admin/projets/${projet}`, { description: 'D' }, projet)
+    expect(maj.donnees.documents).toEqual(attendu)
+
     const supprime = await appeler(documentsId.onRequestDelete, 'DELETE', `/api/admin/documents/${doc.donnees.id}`, undefined, doc.donnees.id)
     expect(supprime).toEqual({ statut: 204, donnees: null })
   })
@@ -96,10 +118,15 @@ describe('projets, documents et questionnaires', () => {
     expect(cree.statut).toBe(201)
     questionnaire = cree.donnees.id
 
+    // Statut, code et projet ne se changent pas par cette route : ils sont ignorés.
     const remplace = await appeler(questionnaireId.onRequestPut, 'PUT', `/api/admin/questionnaires/${questionnaire}`, {
       public_vise: 'Comptables de CUMA', mode: 'hybride', contenu, introduction: 'Bonjour',
+      statut: 'ouvert', code: 'pirate', projet_id: 'autre',
     }, questionnaire)
-    expect(remplace.donnees).toMatchObject({ public_vise: 'Comptables de CUMA', introduction: 'Bonjour', projet_id: projet })
+    expect(remplace.statut).toBe(200)
+    expect(remplace.donnees).toMatchObject({
+      public_vise: 'Comptables de CUMA', introduction: 'Bonjour', projet_id: projet, statut: 'brouillon', code: cree.donnees.code,
+    })
 
     const invalide = await appeler(questionnaireId.onRequestPut, 'PUT', `/api/admin/questionnaires/${questionnaire}`, {
       public_vise: 'X', mode: 'hybride', contenu: { questions: [] },
@@ -107,6 +134,12 @@ describe('projets, documents et questionnaires', () => {
     expect(invalide.statut).toBe(400)
 
     expect((await appeler(publier.onRequestPost, 'POST', `/api/admin/questionnaires/${questionnaire}/publier`, undefined, questionnaire)).donnees.statut).toBe('ouvert')
+    const apresPublication = await appeler(questionnaireId.onRequestPut, 'PUT', `/api/admin/questionnaires/${questionnaire}`, {
+      public_vise: 'Autres', mode: 'hybride', contenu,
+    }, questionnaire)
+    expect(apresPublication.statut).toBe(409)
+    expect((await appeler(questionnaireId.onRequestGet, 'GET', `/api/admin/questionnaires/${questionnaire}`, undefined, questionnaire)).donnees.public_vise)
+      .toBe('Comptables de CUMA')
     expect((await appeler(questionnaireId.onRequestDelete, 'DELETE', `/api/admin/questionnaires/${questionnaire}`, undefined, questionnaire)).statut).toBe(409)
     expect((await appeler(clore.onRequestPost, 'POST', `/api/admin/questionnaires/${questionnaire}/clore`, undefined, questionnaire)).donnees.statut).toBe('clos')
   })

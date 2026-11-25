@@ -1,6 +1,6 @@
 import type { Contenu, Mode, Questionnaire } from '../../shared/interviews'
 import type { SaisieQuestionnaire } from './api'
-import { estHybride, pretPourEnvoi } from './contenu'
+import { contenuVide, estHybride, pretPourEnvoi } from './contenu'
 
 // Mêmes plafonds que le serveur (`server/services/questionnaires.ts`), qui reste seul juge.
 export const QUESTIONS_MAX = 40
@@ -37,6 +37,11 @@ export function versBrouillon(q: Questionnaire): Brouillon {
     tours: String(q.tours_max),
     contenu: q.contenu,
   }
+}
+
+/** Passage à un autre mode : contenu vide, et plafond de tours remis à la valeur par défaut du mode (il n'a pas le même sens d'un mode à l'autre). */
+export function modifsChangementMode(mode: Mode): Pick<Brouillon, 'mode' | 'contenu' | 'tours'> {
+  return { mode, contenu: contenuVide(mode), tours: String(TOURS_PAR_DEFAUT[mode]) }
 }
 
 /** Représentation stable d'un brouillon, pour savoir s'il diffère de la version enregistrée. */

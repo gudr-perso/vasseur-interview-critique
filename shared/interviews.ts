@@ -18,6 +18,7 @@ export const LIMITES = {
   option: 200,
   question_ouverture: 500,
   titre_theme: 200,
+  modele: 100,
 } as const
 
 export interface Logiciel {
@@ -54,6 +55,30 @@ export interface DocumentProjet {
   nom: string
   contenu: string
   cree_le: string
+}
+
+/** Document sans son contenu ; `taille` en caractères. */
+export interface EnteteDocument {
+  id: string
+  nom: string
+  taille: number
+  cree_le: string
+}
+
+/** Taille d'un texte en caractères (un emoji compte pour un). */
+export function tailleTexte(texte: string): number {
+  return Array.from(texte).length
+}
+
+export function enteteDocument(document: DocumentProjet): EnteteDocument {
+  return { id: document.id, nom: document.nom, taille: tailleTexte(document.contenu), cree_le: document.cree_le }
+}
+
+/** Projet tel que le reçoit la fiche de l'admin : ses documents sans leur contenu. */
+export type ProjetFiche = Omit<ProjetComplet, 'documents'> & { documents: EnteteDocument[] }
+
+export function versProjetFiche(projet: ProjetComplet): ProjetFiche {
+  return { ...projet, documents: projet.documents.map(enteteDocument) }
 }
 
 export interface QuestionnaireResume {

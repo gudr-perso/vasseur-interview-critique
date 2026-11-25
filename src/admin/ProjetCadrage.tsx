@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { LIMITES, type ProjetComplet } from '../../shared/interviews'
+import { LIMITES, type ProjetFiche } from '../../shared/interviews'
 import { api } from './api'
 import { ApercuMarkdown } from './ApercuMarkdown'
 import { ChampZone, CLASSE_AIDE, CLASSE_LIBELLE } from './champs'
@@ -28,7 +28,7 @@ function Bascule({ active, onClick, children }: { active: boolean; onClick: () =
   )
 }
 
-export function ProjetCadrage({ projet, onMaj }: { projet: ProjetComplet; onMaj: (projet: ProjetComplet) => void }) {
+export function ProjetCadrage({ projet, onMaj }: { projet: ProjetFiche; onMaj: (projet: ProjetFiche) => void }) {
   const [saisie, setSaisie] = useState<Partial<Cadrage>>({})
   const [apercu, setApercu] = useState(false)
   const action = useAction()

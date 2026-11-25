@@ -1,5 +1,5 @@
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import type { Logiciel, ProjetComplet } from '../../shared/interviews'
+import type { Logiciel, ProjetFiche } from '../../shared/interviews'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
 import { Chip } from '../components/ui/Chip'
@@ -70,7 +70,7 @@ export function ProjetScreen() {
   const majProjet = (maj: (actuel: ProjetAdmin) => ProjetAdmin) =>
     remplacer(donnees => ({ ...donnees, projet: maj(donnees.projet) }))
   // La réponse d'une modification ne porte pas le nombre d'entretiens : celui déjà connu est gardé.
-  const remplacerProjet = (recu: ProjetComplet) => majProjet(actuel => ({ ...recu, nb_entretiens: actuel.nb_entretiens }))
+  const remplacerProjet = (recu: ProjetFiche) => majProjet(actuel => ({ ...recu, nb_entretiens: actuel.nb_entretiens }))
 
   return (
     <>

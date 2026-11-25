@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { enregistrerLogiciel } from '../../server/services/logiciels'
 import { ajouterDocument, creerProjet, lireDocument, lireProjet, listerProjets, modifierProjet } from '../../server/services/projets'
 import { DEFAUTS } from '../../shared/modeles'
+import { LIMITES } from '../../shared/interviews'
 import { creerBaseDeTest } from '../helpers/d1'
 import { espionner } from '../helpers/espion'
 
@@ -36,6 +37,24 @@ describe('projets', () => {
     })
     expect(projet.modele_interview).toBe('claude-haiku-5-5')
     expect(projet.modele_cadrage).toBe(DEFAUTS.cadrage)
+  })
+
+  it('applique la même règle aux modèles à la création et à la modification', async () => {
+    const trop = 'm'.repeat(LIMITES.modele + 1)
+    for (const modele of ['', '   ', trop]) {
+      await expect(
+        creerProjet(base.db, { titre: 'Modèle', type_demande: 'amelioration', modeles: { analyse: modele } }),
+      ).rejects.toMatchObject({ statut: 400 })
+    }
+    const projet = await creerProjet(base.db, {
+      titre: 'Modèle', type_demande: 'amelioration', modeles: { analyse: ' claude-haiku-5-5 ' },
+    })
+    expect(projet.modele_analyse).toBe('claude-haiku-5-5')
+    for (const modele of ['', '   ', trop]) {
+      await expect(modifierProjet(base.db, projet.id, { modeles: { analyse: modele } })).rejects.toMatchObject({ statut: 400 })
+    }
+    const pile = 'm'.repeat(LIMITES.modele)
+    expect((await modifierProjet(base.db, projet.id, { modeles: { analyse: pile } })).modele_analyse).toBe(pile)
   })
 
   it('refuse un titre vide et un logiciel inconnu', async () => {
