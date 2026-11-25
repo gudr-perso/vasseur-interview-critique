@@ -339,10 +339,10 @@ npm run dev
 ```bash
 npm run build
 npm run pages:dev
-# → http://localhost:8788
+# → http://localhost:8790
 ```
 
-Le frontend (`.env.local`) pointe automatiquement vers `http://localhost:8788/api/messages`.
+Le frontend (`.env.local`) pointe automatiquement vers `http://localhost:8790/api/messages`.
 
 ---
 

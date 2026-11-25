@@ -16,7 +16,7 @@ Application web d'interview critique générique. L'utilisateur fournit un sujet
 ```bash
 npm run dev          # Vite dev server (port 5173) — frontend seulement
 npm run build        # TypeScript check + Vite build → dist/
-npm run pages:dev    # wrangler pages dev dist --port 8788 — frontend + API
+npm run pages:dev    # wrangler pages dev dist --port 8790 — frontend + API
 npm run preview      # Preview du build
 ```
 
@@ -25,8 +25,8 @@ npm run preview      # Preview du build
 1. Créer `.dev.vars` (copié depuis `.dev.vars.example`) avec `ANTHROPIC_API_KEY=sk-ant-...`
 2. `npm run build` une fois pour créer `dist/`
 3. Terminal 1 : `npm run dev` (hot reload, port 5173)
-4. Terminal 2 : `npm run pages:dev` (API proxy, port 8788)
-5. `.env.local` pointe déjà vers `http://localhost:8788/api/messages`
+4. Terminal 2 : `npm run pages:dev` (API proxy, port 8790)
+5. `.env.local` pointe déjà vers `http://localhost:8790/api/messages`
 
 ## Architecture
 
