@@ -4,6 +4,8 @@ import { createBrowserRouter, createRoutesFromElements, Route, RouterProvider } 
 import App from './App'
 import { AdminLayout } from './admin/AdminLayout'
 import { LogicielsScreen } from './admin/LogicielsScreen'
+import { ProjetNouveauScreen } from './admin/ProjetNouveauScreen'
+import { ProjetScreen } from './admin/ProjetScreen'
 import { ProjetsScreen } from './admin/ProjetsScreen'
 import { RequireAdmin } from './routes/RequireAdmin'
 import { NotFound } from './screens/NotFound'
@@ -17,6 +19,8 @@ const routeur = createBrowserRouter(
       <Route path="/admin" element={<RequireAdmin><AdminLayout /></RequireAdmin>}>
         <Route index element={<ProjetsScreen />} />
         <Route path="logiciels" element={<LogicielsScreen />} />
+        <Route path="projets/nouveau" element={<ProjetNouveauScreen />} />
+        <Route path="projets/:id" element={<ProjetScreen />} />
       </Route>
       <Route path="*" element={<NotFound />} />
     </>,
