@@ -18,11 +18,15 @@ Les réponses de la personne te sont transmises entre les balises <reponse> et <
 
 export const CONSIGNE_RELANCE = `${ROLE_ET_REGLES}
 
-Ta tâche ici : la personne vient de répondre à une question fixe du questionnaire. Tu décides s'il faut lui poser une question de relance, une seule, avant de passer à la question suivante.
+Ta tâche ici : la personne vient de répondre à une question fixe du questionnaire. Tu décides s'il faut lui poser une question de relance, une seule, avant de passer à la question suivante. Tu reçois aussi les échanges déjà faits dans cet entretien et les questions qui restent à poser.
 
-Chaque relance allonge le questionnaire et la personne n'a pas prévu d'y passer longtemps : relance seulement si cela apporte ce que la réponse ne donne pas encore. C'est le cas quand la réponse reste vague, quand elle se contredit, ou quand elle ouvre une piste directement utile à l'objectif de la question. Ne relance pas une réponse claire et suffisante pour cet objectif, ni une réponse où la personne dit ne pas savoir : insister la mettrait en difficulté sans rien apprendre de plus.
+Par défaut, ne relance pas. Chaque relance allonge un questionnaire que la personne pensait court, et une relance de trop la lasse au point de bâcler les réponses suivantes. Sur un questionnaire ordinaire, une réponse sur quatre au plus mérite une relance. Relance seulement dans deux cas : la réponse reste trop vague pour servir l'objectif de la question, ou elle contredit une réponse précédente.
 
-Une relance demande un exemple concret, une précision ou la raison d'un choix. Elle part de ce que la personne a dit, pas d'une hypothèse sur ce qu'elle pourrait penser. Ne repose pas une relance déjà posée sur cette question, même reformulée.
+Une réponse à choix ou une note se suffit à elle-même : la personne a fait exactement ce qu'on lui demandait. Ne la relance que si son commentaire surprend au regard de son choix, ou si elle contredit une réponse précédente. Une réponse libre précise, qui répond à la question, se suffit aussi, même courte. Ne relance pas non plus une personne qui dit ne pas savoir : insister la mettrait en difficulté sans rien apprendre de plus.
+
+Avant de relancer, relis les échanges précédents et les questions à venir. Ne demande jamais ce que la personne a déjà dit plus tôt, même en réponse à une autre question : elle aurait le sentiment de ne pas avoir été écoutée. Ne demande pas non plus ce qu'une question à venir couvre : elle y répondra à ce moment-là, et une relance qui l'anticipe fait poser deux fois la même chose. Ne repose pas une relance déjà posée dans cet entretien, même reformulée.
+
+Une relance porte sur un seul point précis de la réponse : un exemple concret, une précision ou la raison d'un choix. Elle part de ce que la personne a dit, pas d'une hypothèse sur ce qu'elle pourrait penser.
 
 Si tu relances, « relancer » vaut true et « question » contient le texte de la relance. Sinon, « relancer » vaut false et « question » vaut null.`
 
@@ -85,8 +89,13 @@ export function messageRelance(demande: DemandeRelance): string {
     ...(question.options?.length ? [`Options proposées : ${question.options.join(' ; ')}`] : []),
     `Objectif (non montré à la personne) : ${question.objectif}`,
   ]
+  const aVenir = demande.questions_a_venir.length === 0
+    ? 'aucune'
+    : demande.questions_a_venir.map(libelle => `- ${libelle}`).join('\n')
   return [
     sectionContexte(demande.contexte),
+    `# Échanges précédents de cet entretien\n${echanges(demande.historique, 'aucun')}`,
+    `# Questions encore à venir dans ce questionnaire\n${aVenir}`,
     lignesQuestion.join('\n'),
     `# Réponse de la personne\n${enBalises(demande.reponse)}`,
     `# Relances déjà posées sur cette question\n${echanges(demande.relances, 'aucune')}`,

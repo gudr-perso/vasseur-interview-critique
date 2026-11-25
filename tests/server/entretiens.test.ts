@@ -101,6 +101,30 @@ describe('mode hybride', () => {
     expect(demandes.relance).toHaveLength(1)
   })
 
+  it("transmet à l'IA les échanges précédents, relances comprises, et les questions à venir", async () => {
+    const { ia, demandes } = iaSimulee(d => (d.question.id === 'frequence'
+      ? { relancer: true, question: 'Quel jour ?' }
+      : { relancer: false, question: null }))
+    const { jeton } = await jetonPour('hybride', { relances_max_par_question: 1, tours_max: 5 })
+    await etapeCourante(base.db, jeton)
+    await repondre(base.db, ia, jeton, 1, { valeur: 'Semaine' })
+    expect(demandes.relance[0].historique).toEqual([])
+    expect(demandes.relance[0].questions_a_venir).toEqual(['Comment faites-vous ?'])
+
+    await repondre(base.db, ia, jeton, 2, { texte: 'Le lundi' })
+    // La réponse à la relance ne redemande pas de décision : une relance au plus par question.
+    expect(demandes.relance).toHaveLength(1)
+    await repondre(base.db, ia, jeton, 3, { texte: 'Sur papier' })
+    expect(demandes.relance[1].historique).toEqual([
+      { question: 'Fréquence ?', reponse: 'Semaine' },
+      { question: 'Quel jour ?', reponse: 'Le lundi' },
+    ])
+    expect(demandes.relance[1].reponse).toBe('Sur papier')
+    expect(demandes.relance[1].questions_a_venir).toEqual([])
+    // Les questions à venir n'arrivent que par leur libellé, jamais avec leur objectif.
+    expect(JSON.stringify(demandes.relance[0])).not.toContain('Pratique réelle')
+  })
+
   it('passe à la suite sans relance si l\'IA échoue', async () => {
     const { ia } = iaSimulee(() => 'erreur')
     const { jeton } = await jetonPour('hybride')

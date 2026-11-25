@@ -19,6 +19,10 @@ export interface DemandeRelance {
   reponse: string
   /** Relances déjà posées sur cette question, avec leur réponse. */
   relances: EchangeLu[]
+  /** Échanges des questions précédentes de cet entretien, relances comprises, dans l'ordre. */
+  historique: EchangeLu[]
+  /** Libellés des questions du questionnaire qui restent à poser après celle-ci. */
+  questions_a_venir: string[]
   /** Relances encore permises sur cette question, celle-ci comprise. Absent : une. */
   relances_restantes?: number
 }

@@ -10,7 +10,8 @@
     "lint": "eslint .",
     "pages:dev": "wrangler pages dev dist --port 8790 --compatibility-date=2024-01-01",
     "test": "vitest run",
-    "db:local": "wrangler d1 migrations apply vasseur-interview --local"
+    "db:local": "wrangler d1 migrations apply vasseur-interview --local",
+    "eval:relances": "vitest run --config vitest.eval.config.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.14.0",

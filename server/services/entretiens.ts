@@ -341,6 +341,7 @@ async function relanceProposee(
   )
   if (restantes <= 0) return null
   const base = tours.find(t => t.type === 'question' && t.question_id === question.id)!
+  const questions = questionsDe(questionnaire)
   try {
     const decision = await ia.deciderRelance({
       contexte: await lireContexte(db, questionnaire),
@@ -348,6 +349,9 @@ async function relanceProposee(
       reponse: reponseEnTexte(base.reponse),
       relances: relancesIci.map(echange),
       relances_restantes: restantes,
+      // Ce qui a déjà été dit et ce qui sera demandé : une relance ne doit redemander ni l'un ni l'autre.
+      historique: tours.filter(t => t.ordre < base.ordre).map(echange),
+      questions_a_venir: questions.slice(questions.findIndex(q => q.id === question.id) + 1).map(q => q.libelle),
     })
     return decision.relancer ? decision.question?.trim() || null : null
   } catch (e) {

@@ -5,6 +5,7 @@ import { ErreurIa } from '../../server/ia/types'
 const contexte = { titre_projet: 'P', public_vise: 'Comptables', logiciels: [], resume_contexte: '' }
 const demandeRelance = {
   contexte, question: { id: 'q1', type: 'texte' as const, libelle: 'Comment ?', objectif: 'o' }, reponse: 'Bof', relances: [],
+  historique: [], questions_a_venir: [],
 }
 
 function reponseApi(corps: object, stop_reason = 'end_turn', statut = 200) {
