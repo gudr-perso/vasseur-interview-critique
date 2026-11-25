@@ -5,6 +5,7 @@ import {
 } from '../../server/auth'
 
 const SECRET = 'secret-de-test'
+const MDP = 'sésame'
 const T0 = 1_800_000_000_000
 
 function requete(cookie?: string): Request {
@@ -15,29 +16,35 @@ function requete(cookie?: string): Request {
 
 describe('session', () => {
   it('accepte une session fraîchement créée', async () => {
-    const session = await creerSession(SECRET, T0)
-    expect(await sessionValide(SECRET, session, T0 + 1000)).toBe(true)
+    const session = await creerSession(SECRET, MDP, T0)
+    expect(await sessionValide(SECRET, MDP, session, T0 + 1000)).toBe(true)
   })
 
   it('refuse une session expirée', async () => {
-    const session = await creerSession(SECRET, T0)
-    expect(await sessionValide(SECRET, session, T0 + DUREE_SESSION_S * 1000 + 1)).toBe(false)
+    const session = await creerSession(SECRET, MDP, T0)
+    expect(await sessionValide(SECRET, MDP, session, T0 + DUREE_SESSION_S * 1000 + 1)).toBe(false)
   })
 
   it('refuse une session signée avec un autre secret', async () => {
-    const session = await creerSession('autre-secret', T0)
-    expect(await sessionValide(SECRET, session, T0)).toBe(false)
+    const session = await creerSession('autre-secret', MDP, T0)
+    expect(await sessionValide(SECRET, MDP, session, T0)).toBe(false)
   })
 
   it("refuse une échéance modifiée à la main", async () => {
-    const session = await creerSession(SECRET, T0)
+    const session = await creerSession(SECRET, MDP, T0)
     const [, signature] = session.split('.')
-    expect(await sessionValide(SECRET, `${T0 + 10 ** 12}.${signature}`, T0)).toBe(false)
+    expect(await sessionValide(SECRET, MDP, `${T0 + 10 ** 12}.${signature}`, T0)).toBe(false)
+  })
+
+  it('refuse une session émise avant un changement de mot de passe', async () => {
+    const session = await creerSession(SECRET, 'ancien-mot-de-passe', T0)
+    expect(await sessionValide(SECRET, 'nouveau-mot-de-passe', session, T0 + 1000)).toBe(false)
+    expect(await sessionValide(SECRET, 'ancien-mot-de-passe', session, T0 + 1000)).toBe(true)
   })
 
   it('refuse les valeurs vides ou mal formées', async () => {
     for (const valeur of [null, '', 'abc', '1.2.3', '.x']) {
-      expect(await sessionValide(SECRET, valeur, T0)).toBe(false)
+      expect(await sessionValide(SECRET, MDP, valeur, T0)).toBe(false)
     }
   })
 })
@@ -64,10 +71,10 @@ describe('cookie', () => {
 })
 
 describe('exigerAdmin', () => {
-  const env = { SESSION_SECRET: SECRET }
+  const env = { SESSION_SECRET: SECRET, ADMIN_PASSWORD: MDP }
 
   it('laisse passer une session valide', async () => {
-    const session = await creerSession(SECRET, T0)
+    const session = await creerSession(SECRET, MDP, T0)
     expect(await exigerAdmin(requete(`${NOM_COOKIE}=${session}`), env, T0)).toBeNull()
   })
 
@@ -78,7 +85,18 @@ describe('exigerAdmin', () => {
   })
 
   it('répond 500 si le secret manque', async () => {
-    const refus = await exigerAdmin(requete(), { SESSION_SECRET: '' }, T0)
+    const refus = await exigerAdmin(requete(), { SESSION_SECRET: '', ADMIN_PASSWORD: MDP }, T0)
     expect(refus?.status).toBe(500)
+  })
+
+  it('répond 500 si le mot de passe admin manque', async () => {
+    const refus = await exigerAdmin(requete(), { SESSION_SECRET: SECRET, ADMIN_PASSWORD: '' }, T0)
+    expect(refus?.status).toBe(500)
+  })
+
+  it('refuse une session émise sous un autre mot de passe', async () => {
+    const session = await creerSession(SECRET, 'ancien', T0)
+    const refus = await exigerAdmin(requete(`${NOM_COOKIE}=${session}`), env, T0)
+    expect(refus?.status).toBe(401)
   })
 })

@@ -21,6 +21,6 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     return erreur('Mot de passe incorrect.', 401)
   }
 
-  const session = await creerSession(env.SESSION_SECRET, Date.now())
+  const session = await creerSession(env.SESSION_SECRET, env.ADMIN_PASSWORD, Date.now())
   return json({ ok: true }, 200, { 'Set-Cookie': enTeteCookie(session, DUREE_SESSION_S) })
 }

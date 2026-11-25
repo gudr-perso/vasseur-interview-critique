@@ -39,6 +39,12 @@ describe('schéma D1', () => {
     await db.prepare(
       'INSERT INTO analyses (id, projet_id, type, contenu, source, nb_entretiens, cree_le) VALUES (?,?,?,?,?,?,?)',
     ).bind('a1', 'p1', 'synthese', '# Synthèse', 'mcp', 1, maintenant).run()
+    await db.prepare('INSERT INTO cadrage_messages (id, projet_id, role, contenu, cree_le) VALUES (?,?,?,?,?)')
+      .bind('m1', 'p1', 'ia', 'Quel est le périmètre ?', maintenant).run()
+    await db.prepare(
+      `INSERT INTO analyses (id, projet_id, questionnaire_id, repondant_id, type, contenu, source, nb_entretiens, cree_le)
+       VALUES (?,?,?,?,?,?,?,?,?)`,
+    ).bind('a2', 'p1', 'q1', 'r1', 'fiche_repondant', '# Fiche', 'mcp', 1, maintenant).run()
 
     const projet = await db.prepare('SELECT statut, note_cadrage FROM projets WHERE id = ?').bind('p1')
       .first<{ statut: string; note_cadrage: string }>()
@@ -46,10 +52,40 @@ describe('schéma D1', () => {
 
     await db.prepare('DELETE FROM projets WHERE id = ?').bind('p1').run()
 
-    for (const table of ['projet_logiciels', 'documents', 'questionnaires', 'repondants', 'tours', 'analyses']) {
+    for (const table of ['projet_logiciels', 'documents', 'cadrage_messages', 'questionnaires', 'repondants', 'tours', 'analyses']) {
       expect(await compter(table), table).toBe(0)
     }
     expect(await compter('logiciels')).toBe(1)
+  })
+
+  it('supprime les tours et l\'analyse d\'un répondant supprimé', async () => {
+    const { db } = base
+    await db.prepare(
+      `INSERT INTO projets (id, titre, type_demande, modele_cadrage, modele_interview, modele_analyse, cree_le, maj_le)
+       VALUES ('p9','x','amelioration','a','b','c',?,?)`,
+    ).bind(maintenant, maintenant).run()
+    await db.prepare(
+      `INSERT INTO questionnaires (id, projet_id, public_vise, mode, contenu, code, cree_le, maj_le)
+       VALUES ('q9','p9','Terrain','hybride','{}','CODE900000',?,?)`,
+    ).bind(maintenant, maintenant).run()
+    await db.prepare(
+      `INSERT INTO repondants (id, questionnaire_id, jeton, origine) VALUES ('r9','q9','jeton-9','invitation')`,
+    ).run()
+    await db.prepare(
+      `INSERT INTO tours (id, repondant_id, ordre, type, question, cree_le) VALUES ('t9','r9',1,'question','Q ?',?)`,
+    ).bind(maintenant).run()
+    await db.prepare(
+      `INSERT INTO analyses (id, projet_id, questionnaire_id, repondant_id, type, contenu, source, cree_le)
+       VALUES ('a9','p9','q9','r9','fiche_repondant','x','mcp',?)`,
+    ).bind(maintenant).run()
+
+    await db.prepare('DELETE FROM repondants WHERE id = ?').bind('r9').run()
+
+    const restants = (table: string, id: string) =>
+      db.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE id = ?`).bind(id).first<{ n: number }>()
+    expect((await restants('tours', 't9'))!.n).toBe(0)
+    expect((await restants('analyses', 'a9'))!.n).toBe(0)
+    expect((await restants('questionnaires', 'q9'))!.n).toBe(1)
   })
 
   it('refuse un type de demande inconnu', async () => {

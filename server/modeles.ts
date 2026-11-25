@@ -37,9 +37,12 @@ export async function obtenirCatalogue(
   if (cache && cache.expire > maintenantMs) return cache.catalogue
   try {
     const catalogue = construireCatalogue(await lister())
+    // Liste de secours (aucun modèle claude-) : on ne la garde pas, pour réessayer à la prochaine requête.
+    if (catalogue === CATALOGUE_SECOURS) return catalogue
     cache = { expire: maintenantMs + DUREE_CACHE_MS, catalogue }
     return catalogue
-  } catch {
+  } catch (e) {
+    console.error('Liste des modèles Anthropic indisponible, repli sur la liste de secours', e)
     return CATALOGUE_SECOURS
   }
 }

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { construireCatalogue, obtenirCatalogue, viderCache, type ModeleApi } from '../../server/modeles'
 import { CATALOGUE_SECOURS, DEFAUTS } from '../../shared/modeles'
 
@@ -48,5 +48,20 @@ describe('obtenirCatalogue', () => {
     expect(await obtenirCatalogue(enPanne, 0)).toEqual(CATALOGUE_SECOURS)
     const catalogue = await obtenirCatalogue(async () => LISTE, 1)
     expect(catalogue.modeles).toHaveLength(2)
+  })
+
+  it("ne met pas en cache une liste sans modèle claude-", async () => {
+    let appels = 0
+    const sansClaude = async () => { appels++; return [LISTE[2]] }
+    expect(await obtenirCatalogue(sansClaude, 0)).toEqual(CATALOGUE_SECOURS)
+    expect(await obtenirCatalogue(sansClaude, 1)).toEqual(CATALOGUE_SECOURS)
+    expect(appels).toBe(2)
+  })
+
+  it("journalise l'erreur quand l'appel échoue", async () => {
+    const espion = vi.spyOn(console, 'error').mockImplementation(() => {})
+    await obtenirCatalogue(async () => { throw new Error('réseau') }, 0)
+    expect(espion).toHaveBeenCalled()
+    espion.mockRestore()
   })
 })

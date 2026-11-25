@@ -19,15 +19,26 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     return erreur('Corps de requête JSON invalide.', 400)
   }
 
-  const reponse = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': env.ANTHROPIC_API_KEY,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify(corps),
-  })
+  let reponse: Response
+  try {
+    reponse = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify(corps),
+    })
+  } catch (e) {
+    console.error('Appel Anthropic impossible', e)
+    return erreur('Service Anthropic injoignable.', 502)
+  }
+
+  // Un 401/403 d'Anthropic signale une clé refusée, pas une session expirée : le front les confondrait.
+  if (reponse.status === 401 || reponse.status === 403) {
+    return erreur('Clé API Anthropic refusée. Vérifiez ANTHROPIC_API_KEY.', 502)
+  }
 
   return new Response(await reponse.text(), {
     status: reponse.status,

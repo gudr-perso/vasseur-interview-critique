@@ -103,5 +103,7 @@ CREATE INDEX idx_documents_projet ON documents(projet_id);
 CREATE INDEX idx_cadrage_projet ON cadrage_messages(projet_id, cree_le);
 CREATE INDEX idx_questionnaires_projet ON questionnaires(projet_id);
 CREATE INDEX idx_repondants_questionnaire ON repondants(questionnaire_id);
-CREATE INDEX idx_tours_repondant ON tours(repondant_id, ordre);
 CREATE INDEX idx_analyses_projet ON analyses(projet_id, cree_le);
+CREATE INDEX idx_analyses_questionnaire ON analyses(questionnaire_id);
+CREATE INDEX idx_analyses_repondant ON analyses(repondant_id);
+CREATE INDEX idx_projet_logiciels_logiciel ON projet_logiciels(logiciel_id);

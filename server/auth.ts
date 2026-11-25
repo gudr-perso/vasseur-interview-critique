@@ -20,21 +20,29 @@ function egalEnTempsConstant(a: string, b: string): boolean {
   return difference === 0
 }
 
+/** Texte signé : l'échéance et l'empreinte du mot de passe courant, pour que changer le mot de passe révoque les sessions. */
+async function messageSession(secret: string, motDePasse: string, echeance: string): Promise<string> {
+  return `session:${echeance}:${await hmacHex(secret, `mdp:${motDePasse}`)}`
+}
+
 /** Valeur du cookie : `<échéance en ms>.<signature>`. */
-export async function creerSession(secret: string, maintenantMs: number): Promise<string> {
+export async function creerSession(
+  secret: string, motDePasse: string, maintenantMs: number,
+): Promise<string> {
   const echeance = String(maintenantMs + DUREE_SESSION_S * 1000)
-  return `${echeance}.${await hmacHex(secret, `session:${echeance}`)}`
+  return `${echeance}.${await hmacHex(secret, await messageSession(secret, motDePasse, echeance))}`
 }
 
 export async function sessionValide(
-  secret: string, valeur: string | null, maintenantMs: number,
+  secret: string, motDePasse: string, valeur: string | null, maintenantMs: number,
 ): Promise<boolean> {
   if (!valeur) return false
   const morceaux = valeur.split('.')
   if (morceaux.length !== 2) return false
   const [echeance, signature] = morceaux
   if (!/^\d+$/.test(echeance) || Number(echeance) <= maintenantMs) return false
-  return egalEnTempsConstant(signature, await hmacHex(secret, `session:${echeance}`))
+  const attendue = await hmacHex(secret, await messageSession(secret, motDePasse, echeance))
+  return egalEnTempsConstant(signature, attendue)
 }
 
 /** Compare deux mots de passe sans fuite de durée : on compare leurs empreintes. */
@@ -59,9 +67,13 @@ export function enTeteCookie(valeur: string, dureeS: number): string {
 
 /** Renvoie `null` si la requête porte une session admin valide, sinon la réponse de refus. */
 export async function exigerAdmin(
-  requete: Request, env: { SESSION_SECRET: string }, maintenantMs: number = Date.now(),
+  requete: Request, env: { SESSION_SECRET: string; ADMIN_PASSWORD: string }, maintenantMs: number = Date.now(),
 ): Promise<Response | null> {
-  if (!env.SESSION_SECRET) return erreur('SESSION_SECRET non configuré.', 500)
-  const valide = await sessionValide(env.SESSION_SECRET, lireCookie(requete, NOM_COOKIE), maintenantMs)
+  if (!env.SESSION_SECRET || !env.ADMIN_PASSWORD) {
+    return erreur('ADMIN_PASSWORD ou SESSION_SECRET non configuré.', 500)
+  }
+  const valide = await sessionValide(
+    env.SESSION_SECRET, env.ADMIN_PASSWORD, lireCookie(requete, NOM_COOKIE), maintenantMs,
+  )
   return valide ? null : erreur('Authentification requise.', 401)
 }

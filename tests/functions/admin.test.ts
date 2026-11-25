@@ -3,7 +3,7 @@ import { onRequest as garde } from '../../functions/api/admin/_middleware'
 import { onRequestPost as login } from '../../functions/api/admin/login'
 import { onRequestPost as logout } from '../../functions/api/admin/logout'
 import { onRequestGet as session } from '../../functions/api/admin/session'
-import { NOM_COOKIE, creerSession } from '../../server/auth'
+import { DUREE_SESSION_S, NOM_COOKIE, creerSession } from '../../server/auth'
 
 const env = { ADMIN_PASSWORD: 'sésame', SESSION_SECRET: 'secret-de-test' }
 
@@ -43,6 +43,11 @@ describe('POST /api/admin/login', () => {
     const reponse = await login(contexte(post('/api/admin/login', { motDePasse: 'x' }), { SESSION_SECRET: 's' }))
     expect(reponse.status).toBe(500)
   })
+
+  it('répond 500 quand SESSION_SECRET manque', async () => {
+    const reponse = await login(contexte(post('/api/admin/login', { motDePasse: 'sésame' }), { ADMIN_PASSWORD: 'sésame' }))
+    expect(reponse.status).toBe(500)
+  })
 })
 
 describe('garde /api/admin/*', () => {
@@ -56,8 +61,34 @@ describe('garde /api/admin/*', () => {
     expect(reponse.status).toBe(401)
   })
 
+  it.each(['/api/admin/login/', '/api/admin/loginX'])('refuse %s sans session', async (chemin) => {
+    const reponse = await garde(contexte(new Request(`https://exemple.test${chemin}`)))
+    expect(reponse.status).toBe(401)
+  })
+
+  it('refuse un cookie expiré', async () => {
+    const passe = Date.now() - (DUREE_SESSION_S * 1000 + 60_000)
+    const cookie = `${NOM_COOKIE}=${await creerSession(env.SESSION_SECRET, env.ADMIN_PASSWORD, passe)}`
+    const requete = new Request('https://exemple.test/api/admin/session', { headers: { Cookie: cookie } })
+    expect((await garde(contexte(requete))).status).toBe(401)
+  })
+
+  it('refuse un cookie à signature falsifiée', async () => {
+    const valeur = await creerSession(env.SESSION_SECRET, env.ADMIN_PASSWORD, Date.now())
+    const [echeance, signature] = valeur.split('.')
+    const falsifiee = `${echeance}.${(signature[0] === 'a' ? 'b' : 'a')}${signature.slice(1)}`
+    const requete = new Request('https://exemple.test/api/admin/session', { headers: { Cookie: `${NOM_COOKIE}=${falsifiee}` } })
+    expect((await garde(contexte(requete))).status).toBe(401)
+  })
+
+  it('refuse une session émise sous un autre mot de passe', async () => {
+    const cookie = `${NOM_COOKIE}=${await creerSession(env.SESSION_SECRET, 'ancien', Date.now())}`
+    const requete = new Request('https://exemple.test/api/admin/session', { headers: { Cookie: cookie } })
+    expect((await garde(contexte(requete))).status).toBe(401)
+  })
+
   it('laisse passer avec une session valide', async () => {
-    const cookie = `${NOM_COOKIE}=${await creerSession(env.SESSION_SECRET, Date.now())}`
+    const cookie = `${NOM_COOKIE}=${await creerSession(env.SESSION_SECRET, env.ADMIN_PASSWORD, Date.now())}`
     const requete = new Request('https://exemple.test/api/admin/session', { headers: { Cookie: cookie } })
     expect(await (await garde(contexte(requete))).text()).toBe('suite')
   })
@@ -71,6 +102,9 @@ describe('session et logout', () => {
 
   it('POST /api/admin/logout efface le cookie', async () => {
     const reponse = await logout(contexte(post('/api/admin/logout')))
-    expect(reponse.headers.get('Set-Cookie')).toContain('Max-Age=0')
+    const cookie = reponse.headers.get('Set-Cookie')!
+    expect(cookie.startsWith(`${NOM_COOKIE}=;`)).toBe(true)
+    expect(cookie).toContain('Max-Age=0')
+    expect(cookie).toContain('HttpOnly; Secure; SameSite=Lax')
   })
 })
