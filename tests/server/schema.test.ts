@@ -1,0 +1,77 @@
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { creerBaseDeTest } from '../helpers/d1'
+
+let base: Awaited<ReturnType<typeof creerBaseDeTest>>
+
+beforeAll(async () => { base = await creerBaseDeTest() })
+afterAll(async () => { await base.fermer() })
+
+const maintenant = '2026-11-25T10:00:00Z'
+
+async function compter(table: string): Promise<number> {
+  const ligne = await base.db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).first<{ n: number }>()
+  return ligne!.n
+}
+
+describe('schéma D1', () => {
+  it('enregistre un projet complet puis supprime tout en cascade', async () => {
+    const { db } = base
+    await db.prepare('INSERT INTO logiciels (id, nom, contexte, cree_le, maj_le) VALUES (?,?,?,?,?)')
+      .bind('l1', 'myCuma Infinity', 'Gestion des CUMA', maintenant, maintenant).run()
+    await db.prepare(
+      `INSERT INTO projets (id, titre, type_demande, description, modele_cadrage, modele_interview, modele_analyse, cree_le, maj_le)
+       VALUES (?,?,?,?,?,?,?,?,?)`,
+    ).bind('p1', 'Refonte saisie', 'amelioration', 'desc', 'claude-opus-5-5', 'claude-sonnet-5-5', 'claude-opus-5-5', maintenant, maintenant).run()
+    await db.prepare('INSERT INTO projet_logiciels (projet_id, logiciel_id) VALUES (?,?)').bind('p1', 'l1').run()
+    await db.prepare('INSERT INTO documents (id, projet_id, nom, contenu, cree_le) VALUES (?,?,?,?,?)')
+      .bind('d1', 'p1', 'doc.md', 'texte', maintenant).run()
+    await db.prepare(
+      `INSERT INTO questionnaires (id, projet_id, public_vise, mode, contenu, code, cree_le, maj_le)
+       VALUES (?,?,?,?,?,?,?,?)`,
+    ).bind('q1', 'p1', 'Comptables', 'hybride', '{"questions":[]}', 'ABCDEFGHJK', maintenant, maintenant).run()
+    await db.prepare(
+      `INSERT INTO repondants (id, questionnaire_id, jeton, nom, prenom, poste, entreprise, mail, origine)
+       VALUES (?,?,?,?,?,?,?,?,?)`,
+    ).bind('r1', 'q1', 'jeton-1', 'Durand', 'Léa', 'Comptable', 'CUMA Test', 'lea@example.org', 'lien_generique').run()
+    await db.prepare(
+      'INSERT INTO tours (id, repondant_id, ordre, type, question, reponse, cree_le) VALUES (?,?,?,?,?,?,?)',
+    ).bind('t1', 'r1', 1, 'question', 'Que faites-vous ?', '{"texte":"x"}', maintenant).run()
+    await db.prepare(
+      'INSERT INTO analyses (id, projet_id, type, contenu, source, nb_entretiens, cree_le) VALUES (?,?,?,?,?,?,?)',
+    ).bind('a1', 'p1', 'synthese', '# Synthèse', 'mcp', 1, maintenant).run()
+
+    const projet = await db.prepare('SELECT statut, note_cadrage FROM projets WHERE id = ?').bind('p1')
+      .first<{ statut: string; note_cadrage: string }>()
+    expect(projet).toEqual({ statut: 'brouillon', note_cadrage: '' })
+
+    await db.prepare('DELETE FROM projets WHERE id = ?').bind('p1').run()
+
+    for (const table of ['projet_logiciels', 'documents', 'questionnaires', 'repondants', 'tours', 'analyses']) {
+      expect(await compter(table), table).toBe(0)
+    }
+    expect(await compter('logiciels')).toBe(1)
+  })
+
+  it('refuse un type de demande inconnu', async () => {
+    await expect(
+      base.db.prepare(
+        `INSERT INTO projets (id, titre, type_demande, modele_cadrage, modele_interview, modele_analyse, cree_le, maj_le)
+         VALUES ('p2','x','inconnu','a','b','c',?,?)`,
+      ).bind(maintenant, maintenant).run(),
+    ).rejects.toThrow()
+  })
+
+  it('refuse deux questionnaires avec le même code', async () => {
+    const { db } = base
+    await db.prepare(
+      `INSERT INTO projets (id, titre, type_demande, modele_cadrage, modele_interview, modele_analyse, cree_le, maj_le)
+       VALUES ('p3','x','evolution_simple','a','b','c',?,?)`,
+    ).bind(maintenant, maintenant).run()
+    const inserer = (id: string) => db.prepare(
+      `INSERT INTO questionnaires (id, projet_id, public_vise, mode, contenu, code, cree_le, maj_le)
+       VALUES (?, 'p3', 'Terrain', 'entretien', '{}', 'MEMECODE00', ?, ?)`,
+    ).bind(id, maintenant, maintenant).run()
+    await inserer('q10')
+    await expect(inserer('q11')).rejects.toThrow()
+  })
+})
