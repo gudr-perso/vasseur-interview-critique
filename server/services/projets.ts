@@ -27,6 +27,8 @@ export interface ModificationProjet {
   resume_contexte?: string
   statut?: StatutProjet
   logiciel_ids?: string[]
+  /** Modèle d'IA par étape ; les étapes omises gardent leur modèle. */
+  modeles?: Partial<Record<Etape, string>>
 }
 
 async function lireLigne(db: D1Database, id: string): Promise<Projet> {
@@ -114,6 +116,12 @@ export async function creerProjet(db: D1Database, saisie: CreationProjet): Promi
 
 const CHAMPS_MODIFIABLES = ['titre', 'type_demande', 'description', 'note_cadrage', 'resume_contexte', 'statut'] as const
 
+const COLONNES_MODELE: Record<Etape, string> = {
+  cadrage: 'modele_cadrage',
+  interview: 'modele_interview',
+  analyse: 'modele_analyse',
+}
+
 export async function modifierProjet(
   db: D1Database, id: string, modifs: ModificationProjet,
 ): Promise<ProjetComplet> {
@@ -122,6 +130,12 @@ export async function modifierProjet(
   for (const champ of CHAMPS_MODIFIABLES) {
     const valeur = modifs[champ]
     if (valeur !== undefined) maj[champ] = champ === 'titre' ? valeur.trim() : valeur
+  }
+  for (const etape of Object.keys(COLONNES_MODELE) as Etape[]) {
+    const modele = modifs.modeles?.[etape]
+    if (modele === undefined) continue
+    if (typeof modele !== 'string' || !modele.trim()) throw new ErreurMetier(`Le modèle « ${etape} » est obligatoire.`)
+    maj[COLONNES_MODELE[etape]] = modele.trim()
   }
   if (maj.titre !== undefined && !maj.titre) throw new ErreurMetier('Le titre du projet est obligatoire.')
   if (maj.titre !== undefined) verifierLongueur(maj.titre, LIMITES.titre_projet, 'Titre du projet trop long')
@@ -134,7 +148,7 @@ export async function modifierProjet(
   const logicielIds = modifs.logiciel_ids ? await verifierLogiciels(db, modifs.logiciel_ids) : undefined
 
   maj.maj_le = maintenantIso()
-  // Les noms de colonnes viennent de CHAMPS_MODIFIABLES, jamais de la saisie.
+  // Les noms de colonnes viennent de CHAMPS_MODIFIABLES et COLONNES_MODELE, jamais de la saisie.
   const colonnes = Object.keys(maj)
   // La mise à jour du projet et le remplacement des liens partent ensemble : tout ou rien.
   await db.batch([
@@ -167,4 +181,24 @@ export async function lireDocument(db: D1Database, id: string): Promise<Document
     .bind(id).first<DocumentProjet>()
   if (!document) throw new ErreurMetier(`Document introuvable : ${id}`, 404)
   return document
+}
+
+/** Entretiens commencés ou terminés du projet : ce que perdrait une suppression. */
+export async function compterEntretiens(db: D1Database, projetId: string): Promise<number> {
+  const ligne = await db.prepare(
+    `SELECT COUNT(*) AS n FROM repondants r JOIN questionnaires q ON q.id = r.questionnaire_id
+     WHERE q.projet_id = ? AND r.statut <> 'invite'`,
+  ).bind(projetId).first<{ n: number }>()
+  return ligne?.n ?? 0
+}
+
+/** Supprime le projet ; documents, questionnaires, répondants, tours et analyses partent en cascade. */
+export async function supprimerProjet(db: D1Database, id: string): Promise<void> {
+  const resultat = await db.prepare('DELETE FROM projets WHERE id = ?').bind(id).run()
+  if (resultat.meta.changes === 0) throw new ErreurMetier(`Projet introuvable : ${id}`, 404)
+}
+
+export async function supprimerDocument(db: D1Database, id: string): Promise<void> {
+  const resultat = await db.prepare('DELETE FROM documents WHERE id = ?').bind(id).run()
+  if (resultat.meta.changes === 0) throw new ErreurMetier(`Document introuvable : ${id}`, 404)
 }

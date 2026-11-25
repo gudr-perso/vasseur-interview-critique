@@ -246,3 +246,25 @@ export async function publierQuestionnaire(
 function erreurClos(): ErreurMetier {
   return new ErreurMetier('Ce questionnaire est clos : il ne peut pas être rouvert par cet outil.', 409)
 }
+
+/** Ferme un questionnaire ouvert : plus aucune réponse n'est acceptée. */
+export async function cloreQuestionnaire(db: D1Database, id: string): Promise<Questionnaire> {
+  const resultat = await db.prepare(
+    "UPDATE questionnaires SET statut = 'clos', maj_le = ? WHERE id = ? AND statut = 'ouvert'",
+  ).bind(maintenantIso(), id).run()
+  // lireQuestionnaire lève le 404 d'un identifiant inconnu avant le contrôle du nombre de lignes.
+  const questionnaire = await lireQuestionnaire(db, id)
+  if (resultat.meta.changes === 0) {
+    throw new ErreurMetier('Seul un questionnaire ouvert peut être clos.', 409)
+  }
+  return questionnaire
+}
+
+/** Supprime un brouillon. Un questionnaire publié porte des réponses : il se clôt, il ne se supprime pas. */
+export async function supprimerQuestionnaire(db: D1Database, id: string): Promise<void> {
+  // La condition de statut est dans la requête : un brouillon publié entre-temps n'est pas supprimé.
+  const resultat = await db.prepare("DELETE FROM questionnaires WHERE id = ? AND statut = 'brouillon'").bind(id).run()
+  if (resultat.meta.changes > 0) return
+  await lireQuestionnaire(db, id)
+  throw new ErreurMetier('Seul un questionnaire en brouillon peut être supprimé.', 409)
+}
