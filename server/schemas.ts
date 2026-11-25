@@ -1,5 +1,6 @@
 import { z } from './zod'
 import { MODES, STATUTS_PROJET, TYPES_DEMANDE } from '../shared/interviews'
+import { TYPES_ANALYSE } from '../shared/analyses'
 
 // Ces schémas vérifient la forme ; les règles (longueurs, unicité, statuts) restent dans les services.
 
@@ -67,3 +68,11 @@ export const schemaReponse = z.object({
 })
 
 export const schemaInvitation = schemaIdentite
+
+// Le rattachement d'une fiche à un répondant (et seulement d'une fiche) est vérifié par la route, avant toute génération.
+export const schemaDemandeAnalyse = z.object({
+  type: z.enum(TYPES_ANALYSE),
+  questionnaire_id: z.string().min(1).optional(),
+  repondant_id: z.string().min(1).optional(),
+  inclure_en_cours: z.boolean().optional(),
+})
