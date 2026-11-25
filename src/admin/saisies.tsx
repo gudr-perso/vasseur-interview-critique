@@ -6,7 +6,9 @@ import { useBlocker } from 'react-router-dom'
 
 const Registre = createContext<Set<symbol> | null>(null)
 
-/** À placer une fois, autour des écrans : porte le registre et l'unique bloqueur de navigation. */
+const QUESTION_ABANDON = 'Des modifications ne sont pas enregistrées. Quitter cette page et les perdre ?'
+
+/** À placer une fois, autour des écrans et de l'en-tête : porte le registre et l'unique bloqueur de navigation. */
 export function GardeSaisies({ children }: { children: ReactNode }) {
   const [registre] = useState(() => new Set<symbol>())
   const bloqueur = useBlocker(({ currentLocation, nextLocation }) =>
@@ -14,7 +16,7 @@ export function GardeSaisies({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (bloqueur.state !== 'blocked') return
-    if (window.confirm('Des modifications ne sont pas enregistrées. Quitter cette page et les perdre ?')) {
+    if (window.confirm(QUESTION_ABANDON)) {
       registre.clear()
       bloqueur.proceed()
     } else {
@@ -50,6 +52,21 @@ export function useSaisieNonEnregistree(active: boolean): () => void {
   }, [active, registre, jeton])
 
   return useCallback(() => { registre?.delete(jeton) }, [registre, jeton])
+}
+
+/**
+ * Pour une sortie que le routeur ne voit pas (déconnexion, puis rechargement complet) : demande confirmation
+ * s'il reste une saisie, avant toute action. `true` si l'on peut sortir ; les saisies sont alors oubliées,
+ * pour que le navigateur ne pose pas la question une seconde fois.
+ */
+export function useConfirmerAbandon(): () => boolean {
+  const registre = useContext(Registre)
+  return useCallback(() => {
+    if (!registre || registre.size === 0) return true
+    if (!window.confirm(QUESTION_ABANDON)) return false
+    registre.clear()
+    return true
+  }, [registre])
 }
 
 /** Oublie toutes les saisies déclarées : à appeler avant de quitter un écran dont le contenu vient d'être supprimé. */

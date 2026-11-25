@@ -18,7 +18,7 @@ export function ModelSelector({ id, value, onChange }: ModelSelectorProps) {
       id={id}
       value={value}
       onChange={e => onChange(e.target.value)}
-      className="w-full mt-1 border border-border bg-paper px-3 py-2.5 text-[0.86rem] text-ink focus:outline-none focus:border-ink"
+      className="w-full mt-1 border border-border bg-paper px-3 py-2.5 text-[0.86rem] text-ink focus:outline-none focus:border-ink disabled:opacity-60 disabled:cursor-not-allowed"
     >
       {options.map(m => (
         <option key={m.id} value={m.id}>{m.nom}</option>

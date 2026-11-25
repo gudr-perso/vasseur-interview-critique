@@ -49,13 +49,14 @@ export function ProjetDocuments({ projetId, documents, onAjoute, onSupprime }: P
   const [extraction, setExtraction] = useState<{ enCours: boolean; erreur: string }>({ enCours: false, erreur: '' })
   const fichier = useRef<HTMLInputElement>(null)
   const action = useAction()
+  const occupe = action.enCours || extraction.enCours
   useSaisieNonEnregistree(nom !== '' || texte !== '')
 
   const lireFichier = async (e: ChangeEvent<HTMLInputElement>) => {
     const choisi = e.target.files?.[0]
     // Vidé pour que le même fichier puisse être choisi à nouveau.
     e.target.value = ''
-    if (!choisi) return
+    if (!choisi || occupe) return
     if (texte.trim() && !window.confirm('Remplacer le texte déjà saisi par celui du fichier ?')) return
     setExtraction({ enCours: true, erreur: '' })
     try {
@@ -70,6 +71,7 @@ export function ProjetDocuments({ projetId, documents, onAjoute, onSupprime }: P
 
   const ajouter = async (e: FormEvent) => {
     e.preventDefault()
+    if (occupe) return
     if (!nom.trim() || !texte.trim()) return action.signaler('Le nom et le texte du document sont obligatoires.')
     await action.lancer(async () => {
       onAjoute(await api.projets.ajouterDocument(projetId, { nom, contenu: texte }))
@@ -86,25 +88,29 @@ export function ProjetDocuments({ projetId, documents, onAjoute, onSupprime }: P
 
       <form onSubmit={ajouter} noValidate aria-label="Ajouter un document">
         <h3 className="font-display text-[0.95rem] mb-3">Ajouter un document</h3>
-        <div className="mb-4">
-          <input
-            ref={fichier} type="file" accept={EXTENSIONS_ACCEPTEES} onChange={lireFichier}
-            className="hidden" tabIndex={-1} aria-hidden="true"
+        {/* Champs désactivés pendant l'ajout et l'extraction : une saisie tapée entre-temps serait écrasée au retour. */}
+        <fieldset disabled={occupe} className="min-w-0">
+          <legend className="sr-only">Fichier, nom et texte du document</legend>
+          <div className="mb-4">
+            <input
+              ref={fichier} type="file" accept={EXTENSIONS_ACCEPTEES} onChange={lireFichier}
+              className="hidden" tabIndex={-1} aria-hidden="true"
+            />
+            <Button type="button" loading={extraction.enCours} onClick={() => fichier.current?.click()}>
+              Choisir un fichier
+            </Button>
+            <span className="block text-[0.76rem] text-muted mt-1">
+              Le texte du fichier remplit la zone ci-dessous : relisez-le avant de l'ajouter.
+            </span>
+            <Alerte className="mt-1.5">{extraction.erreur}</Alerte>
+          </div>
+          <ChampTexte id="document-nom" libelle="Nom" valeur={nom} onChange={setNom} maxLength={LIMITES.nom_document} />
+          <ChampZone
+            id="document-texte" libelle="Texte" valeur={texte} onChange={setTexte} lignes={8}
+            maxLength={LIMITES.contenu_document}
+            aide={texte ? `${nombre(texte.length)} caractères sur ${nombre(LIMITES.contenu_document)} au plus` : undefined}
           />
-          <Button type="button" loading={extraction.enCours} onClick={() => fichier.current?.click()}>
-            Choisir un fichier
-          </Button>
-          <span className="block text-[0.76rem] text-muted mt-1">
-            Le texte du fichier remplit la zone ci-dessous : relisez-le avant de l'ajouter.
-          </span>
-          <Alerte className="mt-1.5">{extraction.erreur}</Alerte>
-        </div>
-        <ChampTexte id="document-nom" libelle="Nom" valeur={nom} onChange={setNom} maxLength={LIMITES.nom_document} />
-        <ChampZone
-          id="document-texte" libelle="Texte" valeur={texte} onChange={setTexte} lignes={8}
-          maxLength={LIMITES.contenu_document}
-          aide={texte ? `${nombre(texte.length)} caractères sur ${nombre(LIMITES.contenu_document)} au plus` : undefined}
-        />
+        </fieldset>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           <Button type="submit" variant="primary" loading={action.enCours} disabled={extraction.enCours}>
             Ajouter le document

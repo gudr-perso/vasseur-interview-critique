@@ -47,7 +47,11 @@ export function SectionFiche({ titre, aide, enregistrement, children }: SectionF
     <Card padding="lg">
       <form onSubmit={soumettre} noValidate aria-labelledby={idTitre}>
         {entete}
-        {children}
+        {/* Champs désactivés pendant l'enregistrement : une saisie tapée entre-temps serait effacée au retour. */}
+        <fieldset disabled={action.enCours} className="min-w-0">
+          <legend className="sr-only">{titre}</legend>
+          {children}
+        </fieldset>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mt-2">
           <Button type="submit" variant="primary" loading={action.enCours} disabled={!modifie}>Enregistrer</Button>
           {modifie && !action.enCours && (

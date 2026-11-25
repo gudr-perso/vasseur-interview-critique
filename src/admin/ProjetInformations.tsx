@@ -8,6 +8,7 @@ import { CasesLogiciels } from './CasesLogiciels'
 import { ChampListe, ChampTexte, ChampZone } from './champs'
 import { useAction } from './commun'
 import { LIBELLES_STATUT_PROJET, LIBELLES_TYPE_DEMANDE, optionsDe } from './libelles'
+import { champsModifies } from './modifications'
 import { useSaisieNonEnregistree } from './saisies'
 import { SectionFiche } from './SectionFiche'
 
@@ -21,10 +22,6 @@ interface Informations {
 
 const OPTIONS_TYPE = optionsDe(TYPES_DEMANDE, LIBELLES_TYPE_DEMANDE)
 const OPTIONS_STATUT = optionsDe(STATUTS_PROJET, LIBELLES_STATUT_PROJET)
-
-function memesIds(a: string[], b: string[]): boolean {
-  return a.length === b.length && [...a].sort().join('|') === [...b].sort().join('|')
-}
 
 interface Props {
   projet: ProjetComplet
@@ -45,18 +42,18 @@ export function ProjetInformations({ projet, logiciels, onMaj }: Props) {
     logiciel_ids: projet.logiciels.map(l => l.id),
   }
   const valeurs: Informations = { ...enregistre, ...saisie }
-  const modifie =
-    valeurs.titre !== enregistre.titre || valeurs.type_demande !== enregistre.type_demande
-    || valeurs.statut !== enregistre.statut || valeurs.description !== enregistre.description
-    || !memesIds(valeurs.logiciel_ids, enregistre.logiciel_ids)
+  // Seuls les champs changés partent : les autres ont pu être modifiés ailleurs depuis le chargement.
+  const modifs = champsModifies(enregistre, saisie)
+  const modifie = Object.keys(modifs).length > 0
   useSaisieNonEnregistree(modifie)
 
   const changer = (modif: Partial<Informations>) => setSaisie(actuelle => ({ ...actuelle, ...modif }))
 
   const enregistrer = () => {
-    if (!valeurs.titre.trim()) return action.signaler('Le titre du projet est obligatoire.')
+    if (modifs.titre !== undefined && !modifs.titre.trim()) return action.signaler('Le titre du projet est obligatoire.')
     void action.lancer(async () => {
-      onMaj(await api.projets.modifier(projet.id, valeurs))
+      onMaj(await api.projets.modifier(projet.id, modifs))
+      // Les champs sont désactivés pendant l'appel : rien n'a pu être tapé entre-temps.
       setSaisie({})
     })
   }

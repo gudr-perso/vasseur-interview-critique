@@ -4,6 +4,7 @@ import { api } from './api'
 import { ApercuMarkdown } from './ApercuMarkdown'
 import { ChampZone, CLASSE_AIDE, CLASSE_LIBELLE } from './champs'
 import { useAction } from './commun'
+import { champsModifies } from './modifications'
 import { useSaisieNonEnregistree } from './saisies'
 import { SectionFiche } from './SectionFiche'
 
@@ -32,8 +33,11 @@ export function ProjetCadrage({ projet, onMaj }: { projet: ProjetComplet; onMaj:
   const [apercu, setApercu] = useState(false)
   const action = useAction()
 
-  const valeurs: Cadrage = { note_cadrage: projet.note_cadrage, resume_contexte: projet.resume_contexte, ...saisie }
-  const modifie = valeurs.note_cadrage !== projet.note_cadrage || valeurs.resume_contexte !== projet.resume_contexte
+  const enregistre: Cadrage = { note_cadrage: projet.note_cadrage, resume_contexte: projet.resume_contexte }
+  const valeurs: Cadrage = { ...enregistre, ...saisie }
+  // Seuls les champs changés partent : Claude a pu écrire la note par le MCP depuis le chargement de la fiche.
+  const modifs = champsModifies(enregistre, saisie)
+  const modifie = Object.keys(modifs).length > 0
   useSaisieNonEnregistree(modifie)
 
   const changer = (modif: Partial<Cadrage>) => setSaisie(actuelle => ({ ...actuelle, ...modif }))
@@ -41,7 +45,8 @@ export function ProjetCadrage({ projet, onMaj }: { projet: ProjetComplet; onMaj:
   const enregistrer = () => {
     void action.lancer(async () => {
       // Le projet renvoyé porte le statut recalculé par le serveur (un brouillon devient « Cadré »).
-      onMaj(await api.projets.modifier(projet.id, valeurs))
+      onMaj(await api.projets.modifier(projet.id, modifs))
+      // Les champs sont désactivés pendant l'appel : rien n'a pu être tapé entre-temps.
       setSaisie({})
     })
   }

@@ -5,6 +5,7 @@ import { ModelSelector } from '../components/ui/ModelSelector'
 import { api } from './api'
 import { CLASSE_LIBELLE } from './champs'
 import { useAction } from './commun'
+import { champsModifies } from './modifications'
 import { useSaisieNonEnregistree } from './saisies'
 import { SectionFiche } from './SectionFiche'
 
@@ -24,12 +25,15 @@ export function ProjetModeles({ projet, onMaj }: { projet: ProjetComplet; onMaj:
     analyse: projet.modele_analyse,
   }
   const valeurs: Record<Etape, string> = { ...enregistres, ...saisie }
-  const modifie = ETAPES.some(({ etape }) => valeurs[etape] !== enregistres[etape])
+  // Seules les étapes changées partent : le serveur garde le modèle des étapes omises.
+  const modifs = champsModifies(enregistres, saisie)
+  const modifie = Object.keys(modifs).length > 0
   useSaisieNonEnregistree(modifie)
 
   const enregistrer = () => {
     void action.lancer(async () => {
-      onMaj(await api.projets.modifier(projet.id, { modeles: valeurs }))
+      onMaj(await api.projets.modifier(projet.id, { modeles: modifs }))
+      // Les listes sont désactivées pendant l'appel : rien n'a pu être choisi entre-temps.
       setSaisie({})
     })
   }
