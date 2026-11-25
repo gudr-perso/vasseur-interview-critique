@@ -1,3 +1,5 @@
+import type { TypeAnalyse } from '../../shared/analyses'
+import type { Modele } from '../../shared/modeles'
 import type { Mode, StatutProjet, StatutQuestionnaire, TypeDemande, TypeQuestion } from '../../shared/interviews'
 import type { RepondantResume, StatutRepondant } from '../../shared/repondants'
 
@@ -41,6 +43,18 @@ export const LIBELLES_STATUT_REPONDANT: Record<StatutRepondant, string> = {
 export const LIBELLES_ORIGINE: Record<RepondantResume['origine'], string> = {
   invitation: 'Invitation',
   lien_generique: 'Lien générique',
+}
+
+export const LIBELLES_TYPE_ANALYSE: Record<TypeAnalyse, string> = {
+  fiche_repondant: 'Fiche répondant',
+  synthese: 'Synthèse',
+  expression_besoin: 'Expression de besoin',
+}
+
+/** Source d'une analyse : « Claude (MCP) », ou le nom du modèle API (son identifiant s'il est inconnu). */
+export function libelleSource(source: string, modeles: readonly Modele[]): string {
+  if (source === 'mcp') return 'Claude (MCP)'
+  return modeles.find(m => m.id === source)?.nom ?? source
 }
 
 /** Libellé d'une valeur reçue du serveur sous forme de chaîne ; la valeur brute si elle est inconnue. */

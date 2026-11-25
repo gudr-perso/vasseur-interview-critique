@@ -6,6 +6,7 @@ import { Chip } from '../components/ui/Chip'
 import { api, type ProjetAdmin } from './api'
 import { Alerte, Chargement, CLASSE_LIEN, ErreurChargement, useAction, useChargement } from './commun'
 import { LIBELLES_STATUT_PROJET } from './libelles'
+import { ProjetAnalyses } from './ProjetAnalyses'
 import { ProjetCadrage } from './ProjetCadrage'
 import { ProjetDocuments } from './ProjetDocuments'
 import { ProjetInformations } from './ProjetInformations'
@@ -95,6 +96,7 @@ export function ProjetScreen() {
           questionnaires: [...actuel.questionnaires, { id: q.id, public_vise: q.public_vise, mode: q.mode, statut: q.statut, code: q.code }],
         }))}
       />
+      <ProjetAnalyses projet={projet} />
       <ZoneDanger projet={projet} />
     </>
   )

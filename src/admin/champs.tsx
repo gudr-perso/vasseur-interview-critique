@@ -153,3 +153,25 @@ export function ChampListe<V extends string>(props: ChampListeProps<V>) {
     </Champ>
   )
 }
+
+interface ChampCaseProps {
+  id: string
+  libelle: string
+  coche: boolean
+  onChange: (coche: boolean) => void
+  disabled?: boolean
+  className?: string
+}
+
+/** Case à cocher et son libellé, sur une ligne. */
+export function ChampCase({ id, libelle, coche, onChange, disabled, className }: ChampCaseProps) {
+  return (
+    <label htmlFor={id} className={clsx('inline-flex items-center gap-2 text-[0.84rem] cursor-pointer', disabled && 'opacity-60 cursor-not-allowed', className)}>
+      <input
+        id={id} type="checkbox" className="accent-red shrink-0" checked={coche} disabled={disabled}
+        onChange={e => onChange(e.target.checked)}
+      />
+      {libelle}
+    </label>
+  )
+}

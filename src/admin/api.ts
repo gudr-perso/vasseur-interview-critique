@@ -1,8 +1,10 @@
+import type { Analyse, AnalyseResume, TypeAnalyse } from '../../shared/analyses'
 import type {
   Contenu, DocumentProjet, Logiciel, Mode, ProjetComplet, ProjetFiche, ProjetResume, Questionnaire, StatutProjet, TypeDemande,
 } from '../../shared/interviews'
 import type { Etape } from '../../shared/modeles'
 import type { EntretienLu, Identite, RepondantResume } from '../../shared/repondants'
+import { lireFluxAnalyse, REPONSE_INATTENDUE, type ResultatGeneration } from './fluxAnalyse'
 
 export class ErreurApi extends Error {
   constructor(message: string, readonly statut: number) {
@@ -10,15 +12,18 @@ export class ErreurApi extends Error {
   }
 }
 
-async function appel<T>(methode: string, chemin: string, corps?: unknown): Promise<T> {
+/** Envoie la requête ; une réponse en erreur devient une `ErreurApi` portant le message du serveur. */
+async function envoyer(methode: string, chemin: string, corps?: unknown, signal?: AbortSignal): Promise<Response> {
   let reponse: Response
   try {
     reponse = await fetch(`/api/admin${chemin}`, {
       method: methode,
       headers: corps === undefined ? undefined : { 'Content-Type': 'application/json' },
       body: corps === undefined ? undefined : JSON.stringify(corps),
+      signal,
     })
-  } catch {
+  } catch (e) {
+    if (signal?.aborted) throw e
     throw new ErreurApi('Serveur injoignable. Vérifiez votre connexion.', 0)
   }
   if (reponse.status === 401) {
@@ -30,7 +35,47 @@ async function appel<T>(methode: string, chemin: string, corps?: unknown): Promi
     const donnees = await reponse.json().catch(() => ({})) as { error?: { message?: string } }
     throw new ErreurApi(donnees.error?.message ?? `Erreur ${reponse.status}`, reponse.status)
   }
+  return reponse
+}
+
+async function appel<T>(methode: string, chemin: string, corps?: unknown): Promise<T> {
+  const reponse = await envoyer(methode, chemin, corps)
   return (reponse.status === 204 ? undefined : await reponse.json()) as T
+}
+
+export interface FiltreAnalyses {
+  questionnaire_id?: string
+  repondant_id?: string
+  type?: TypeAnalyse
+}
+
+export interface DemandeAnalyse {
+  type: TypeAnalyse
+  questionnaire_id?: string
+  repondant_id?: string
+  inclure_en_cours?: boolean
+}
+
+const COUPURE_FLUX =
+  "Connexion interrompue pendant la génération. L'analyse continue sans doute côté serveur : actualisez la liste dans quelques minutes."
+
+/**
+ * Lance une analyse et en suit le flux. `surTexte` reçoit le texte cumulé à chaque morceau.
+ * Les refus du serveur (400, 413, 503…) sont levés en `ErreurApi` ; un échec en cours de route est
+ * renvoyé dans `erreur`. Si `signal` est interrompu, l'erreur d'interruption est relancée telle quelle.
+ */
+async function generer(
+  projetId: string, demande: DemandeAnalyse,
+  surTexte: (texte: string, nb_entretiens: number) => void, signal?: AbortSignal,
+): Promise<ResultatGeneration> {
+  const reponse = await envoyer('POST', `/projets/${projetId}/analyses`, demande, signal)
+  if (!reponse.body) throw new ErreurApi(REPONSE_INATTENDUE, reponse.status)
+  try {
+    return await lireFluxAnalyse(reponse.body, surTexte)
+  } catch (e) {
+    if (signal?.aborted) throw e
+    throw new ErreurApi(COUPURE_FLUX, 0)
+  }
 }
 
 export interface SaisieProjet {
@@ -95,6 +140,19 @@ export const api = {
       appel<RepondantResume>('POST', `/questionnaires/${questionnaireId}/repondants`, identite),
     lireEntretien: (id: string) => appel<EntretienLu>('GET', `/repondants/${id}`),
     supprimer: (id: string) => appel<void>('DELETE', `/repondants/${id}`),
+  },
+  analyses: {
+    lister: (projetId: string, filtre: FiltreAnalyses = {}) => {
+      const recherche = new URLSearchParams()
+      if (filtre.questionnaire_id) recherche.set('questionnaire_id', filtre.questionnaire_id)
+      if (filtre.repondant_id) recherche.set('repondant_id', filtre.repondant_id)
+      if (filtre.type) recherche.set('type', filtre.type)
+      const suffixe = recherche.toString()
+      return appel<AnalyseResume[]>('GET', `/projets/${projetId}/analyses${suffixe ? `?${suffixe}` : ''}`)
+    },
+    lire: (id: string) => appel<Analyse>('GET', `/analyses/${id}`),
+    supprimer: (id: string) => appel<void>('DELETE', `/analyses/${id}`),
+    generer,
   },
 }
 

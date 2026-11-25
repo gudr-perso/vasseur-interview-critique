@@ -1,10 +1,12 @@
 import { clsx } from 'clsx'
+import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { reponseEnTexte, type EntretienLu, type TourLu } from '../../shared/repondants'
 import { Button } from '../components/ui/Button'
 import { Chip } from '../components/ui/Chip'
 import { api } from './api'
 import { Alerte, Chargement, CLASSE_LIEN, ErreurChargement, useAction, useChargement } from './commun'
+import { GenerationAnalyse } from './GenerationAnalyse'
 import {
   formaterDateHeure, libelle, LIBELLES_MODE, LIBELLES_ORIGINE, LIBELLES_STATUT_REPONDANT,
 } from './libelles'
@@ -69,6 +71,8 @@ function Entretien({ entretien }: { entretien: EntretienLu }) {
         ))}
       </dl>
 
+      {r.statut !== 'invite' && <FicheRepondant entretien={entretien} />}
+
       <h2 className="font-display text-[1.1rem] mb-3">Fil de l'entretien</h2>
       {tours.length === 0
         ? <p className="text-[0.84rem] text-muted mb-6">Aucune question posée pour l'instant.</p>
@@ -85,6 +89,28 @@ function Entretien({ entretien }: { entretien: EntretienLu }) {
         <Alerte className="mt-2">{suppression.erreur}</Alerte>
       </div>
     </>
+  )
+}
+
+/** Génération de la fiche de ce répondant, préréglée ; le projet est chargé à l'ouverture. */
+function FicheRepondant({ entretien }: { entretien: EntretienLu }) {
+  const [ouverte, setOuverte] = useState(false)
+  if (!ouverte) {
+    return <Button size="sm" className="mb-6" onClick={() => setOuverte(true)}>Générer la fiche de ce répondant</Button>
+  }
+  return <GenerationFiche entretien={entretien} onFermer={() => setOuverte(false)} />
+}
+
+function GenerationFiche({ entretien, onFermer }: { entretien: EntretienLu; onFermer: () => void }) {
+  const projetId = entretien.questionnaire.projet_id
+  const { etat, recharger } = useChargement(() => api.projets.lire(projetId), projetId)
+  if (etat.phase === 'chargement') return <Chargement />
+  if (etat.phase === 'erreur') return <ErreurChargement message={etat.message} onReessayer={recharger} />
+  return (
+    <GenerationAnalyse
+      projet={etat.donnees} onFermer={onFermer}
+      preReglage={{ questionnaire_id: entretien.questionnaire.id, repondant_id: entretien.repondant.id }}
+    />
   )
 }
 

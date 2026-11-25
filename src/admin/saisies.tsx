@@ -4,19 +4,30 @@ import { useBlocker } from 'react-router-dom'
 // Garde contre la perte d'une saisie : un écran ou une section déclare qu'il porte des modifications
 // non enregistrées ; tant qu'il en reste, quitter la page (lien, retour arrière, fermeture) demande confirmation.
 
-const Registre = createContext<Set<symbol> | null>(null)
+// Chaque déclaration porte au besoin un avertissement propre, montré à la place de la question habituelle.
+type RegistreSaisies = Map<symbol, string | null>
+
+const Registre = createContext<RegistreSaisies | null>(null)
 
 const QUESTION_ABANDON = 'Des modifications ne sont pas enregistrées. Quitter cette page et les perdre ?'
 
+/** Question posée avant de quitter : les avertissements propres, puis la question habituelle ou une question neutre. */
+function questionAbandon(registre: RegistreSaisies): string {
+  const valeurs = [...registre.values()]
+  const avertissements = [...new Set(valeurs.filter((v): v is string => v !== null))]
+  const question = valeurs.includes(null) ? QUESTION_ABANDON : 'Quitter cette page ?'
+  return [...avertissements, question].join('\n\n')
+}
+
 /** À placer une fois, autour des écrans et de l'en-tête : porte le registre et l'unique bloqueur de navigation. */
 export function GardeSaisies({ children }: { children: ReactNode }) {
-  const [registre] = useState(() => new Set<symbol>())
+  const [registre] = useState<RegistreSaisies>(() => new Map())
   const bloqueur = useBlocker(({ currentLocation, nextLocation }) =>
     registre.size > 0 && currentLocation.pathname !== nextLocation.pathname)
 
   useEffect(() => {
     if (bloqueur.state !== 'blocked') return
-    if (window.confirm(QUESTION_ABANDON)) {
+    if (window.confirm(questionAbandon(registre))) {
       registre.clear()
       bloqueur.proceed()
     } else {
@@ -28,16 +39,17 @@ export function GardeSaisies({ children }: { children: ReactNode }) {
 }
 
 /**
- * Déclare une saisie non enregistrée tant que `active` est vrai.
+ * Déclare une saisie non enregistrée (ou un travail en cours) tant que `active` est vrai.
+ * `avertissement`, s'il est donné, remplace la question habituelle dans la confirmation.
  * Renvoie `liberer`, à appeler juste avant une navigation qui suit un enregistrement réussi.
  */
-export function useSaisieNonEnregistree(active: boolean): () => void {
+export function useSaisieNonEnregistree(active: boolean, avertissement?: string): () => void {
   const registre = useContext(Registre)
   const [jeton] = useState(() => Symbol('saisie'))
 
   useEffect(() => {
     if (!active || !registre) return
-    registre.add(jeton)
+    registre.set(jeton, avertissement ?? null)
     const avertir = (e: BeforeUnloadEvent) => {
       // Tant que le jeton est déclaré : `liberer` l'a peut-être retiré avant une sortie voulue.
       if (!registre.has(jeton)) return
@@ -49,7 +61,7 @@ export function useSaisieNonEnregistree(active: boolean): () => void {
       registre.delete(jeton)
       window.removeEventListener('beforeunload', avertir)
     }
-  }, [active, registre, jeton])
+  }, [active, registre, jeton, avertissement])
 
   return useCallback(() => { registre?.delete(jeton) }, [registre, jeton])
 }
@@ -63,7 +75,7 @@ export function useConfirmerAbandon(): () => boolean {
   const registre = useContext(Registre)
   return useCallback(() => {
     if (!registre || registre.size === 0) return true
-    if (!window.confirm(QUESTION_ABANDON)) return false
+    if (!window.confirm(questionAbandon(registre))) return false
     registre.clear()
     return true
   }, [registre])
