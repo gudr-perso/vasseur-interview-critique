@@ -1,8 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { enregistrerLogiciel } from '../../server/services/logiciels'
-import { ajouterDocument, creerProjet, lireProjet, listerProjets, modifierProjet } from '../../server/services/projets'
+import { ajouterDocument, creerProjet, lireDocument, lireProjet, listerProjets, modifierProjet } from '../../server/services/projets'
 import { DEFAUTS } from '../../shared/modeles'
 import { creerBaseDeTest } from '../helpers/d1'
+import { espionner } from '../helpers/espion'
 
 let base: Awaited<ReturnType<typeof creerBaseDeTest>>
 let infinity: string
@@ -86,5 +87,69 @@ describe('projets', () => {
 
     const cadres = await listerProjets(base.db, { statut: 'cadre' })
     expect(cadres.map(p => p.titre)).toEqual(['À cadrer'])
+  })
+})
+
+describe('atomicité des écritures de projet', () => {
+  async function nombreDeProjets(): Promise<number> {
+    return (await base.db.prepare('SELECT COUNT(*) AS n FROM projets').first<{ n: number }>())!.n
+  }
+
+  it('ne laisse aucun projet après un refus pour logiciel inconnu, et n\'en écrit même aucun', async () => {
+    const avant = await nombreDeProjets()
+    const espion = espionner(base.db)
+    await expect(
+      creerProjet(espion.db, { titre: 'Fantôme', type_demande: 'amelioration', logiciel_ids: [infinity, 'inconnu'] }),
+    ).rejects.toThrow('Logiciel introuvable : inconnu')
+    expect(await nombreDeProjets()).toBe(avant)
+    expect(espion.preparees.filter(sql => /^\s*(INSERT|DELETE|UPDATE)/i.test(sql))).toEqual([])
+  })
+
+  it('insère le projet et ses liens dans un seul lot, sans suppression compensatoire', async () => {
+    const espion = espionner(base.db)
+    const projet = await creerProjet(espion.db, {
+      titre: 'En un lot', type_demande: 'amelioration', logiciel_ids: [infinity, zeendoc, infinity],
+    })
+    expect(espion.lots).toHaveLength(1)
+    expect(espion.lots[0].filter(sql => sql.includes('INSERT INTO projets '))).toHaveLength(1)
+    expect(espion.lots[0].filter(sql => sql.includes('INSERT INTO projet_logiciels'))).toHaveLength(2)
+    expect(espion.preparees.some(sql => /DELETE/i.test(sql))).toBe(false)
+    expect(projet.logiciels.map(l => l.nom)).toEqual(['myCuma Infinity', 'Zeendoc'])
+  })
+
+  it('met à jour le projet et remplace ses liens dans un seul lot', async () => {
+    const projet = await creerProjet(base.db, { titre: 'À modifier', type_demande: 'amelioration', logiciel_ids: [infinity] })
+    const espion = espionner(base.db)
+    await modifierProjet(espion.db, projet.id, { titre: 'Modifié', logiciel_ids: [zeendoc] })
+    expect(espion.lots).toHaveLength(1)
+    expect(espion.lots[0].some(sql => sql.startsWith('UPDATE projets'))).toBe(true)
+    expect(espion.lots[0].some(sql => sql.includes('DELETE FROM projet_logiciels'))).toBe(true)
+    expect(espion.lots[0].some(sql => sql.includes('INSERT INTO projet_logiciels'))).toBe(true)
+  })
+
+  it('ne change rien quand un logiciel est inconnu à la modification', async () => {
+    const projet = await creerProjet(base.db, { titre: 'Intact', type_demande: 'amelioration', logiciel_ids: [infinity] })
+    await expect(modifierProjet(base.db, projet.id, { titre: 'Changé', logiciel_ids: ['inconnu'] }))
+      .rejects.toThrow('Logiciel introuvable')
+    const relu = await lireProjet(base.db, projet.id)
+    expect(relu.titre).toBe('Intact')
+    expect(relu.logiciels.map(l => l.nom)).toEqual(['myCuma Infinity'])
+  })
+
+  it('vide la liste des logiciels avec logiciel_ids: []', async () => {
+    const projet = await creerProjet(base.db, { titre: 'À vider', type_demande: 'amelioration', logiciel_ids: [infinity, zeendoc] })
+    expect(projet.logiciels).toHaveLength(2)
+    const maj = await modifierProjet(base.db, projet.id, { logiciel_ids: [] })
+    expect(maj.logiciels).toEqual([])
+    expect(maj.titre).toBe('À vider')
+  })
+})
+
+describe('lireDocument', () => {
+  it('renvoie le document complet, ou une erreur 404', async () => {
+    const projet = await creerProjet(base.db, { titre: 'Docs', type_demande: 'amelioration' })
+    const doc = await ajouterDocument(base.db, projet.id, { nom: 'guide.md', contenu: '# Guide\nSuite' })
+    expect(await lireDocument(base.db, doc.id)).toMatchObject({ id: doc.id, nom: 'guide.md', contenu: '# Guide\nSuite' })
+    await expect(lireDocument(base.db, 'inconnu')).rejects.toMatchObject({ statut: 404 })
   })
 })

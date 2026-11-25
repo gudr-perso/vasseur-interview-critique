@@ -20,4 +20,18 @@ describe('guides', () => {
       expect(guide).toContain(repere)
     }
   })
+
+  it('les deux guides disent de lire les documents utiles avec lire_document', () => {
+    for (const etape of ETAPES_GUIDE) expect(lireGuide(etape), etape).toContain('lire_document')
+  })
+
+  it('le guide de questionnaire donne les bornes à respecter', () => {
+    const guide = lireGuide('questionnaire')
+    for (const borne of [
+      '40 questions au plus', 'de 1 à 120 minutes', '10 par défaut', 'tours_max', 'de 1 à 30',
+      'lettres, chiffres, tiret et souligné', '500 caractères', '200 caractères',
+    ]) {
+      expect(guide, borne).toContain(borne)
+    }
+  })
 })

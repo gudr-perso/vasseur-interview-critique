@@ -1,5 +1,6 @@
 import { ErreurMetier } from '../erreurs'
 import { maintenantIso, nouvelId } from '../ids'
+import { LIMITES, verifierLongueur } from './limites'
 
 export interface Logiciel {
   id: string
@@ -34,6 +35,8 @@ export async function lireLogiciel(db: D1Database, id: string): Promise<Logiciel
 export async function enregistrerLogiciel(db: D1Database, saisie: SaisieLogiciel): Promise<Logiciel> {
   const nom = saisie.nom.trim()
   if (!nom) throw new ErreurMetier('Le nom du logiciel est obligatoire.')
+  verifierLongueur(nom, LIMITES.nom_logiciel, 'Nom du logiciel trop long')
+  if (saisie.contexte !== undefined) verifierLongueur(saisie.contexte, LIMITES.contexte_logiciel, 'Contexte du logiciel trop long')
   const maintenant = maintenantIso()
 
   const existant = saisie.id

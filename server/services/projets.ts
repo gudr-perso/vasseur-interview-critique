@@ -2,6 +2,7 @@ import { DEFAUTS, type Etape } from '../../shared/modeles'
 import { ErreurMetier } from '../erreurs'
 import { maintenantIso, nouvelId } from '../ids'
 import type { Logiciel } from './logiciels'
+import { LIMITES, verifierLongueur } from './limites'
 
 export const TYPES_DEMANDE = ['evolution_simple', 'amelioration', 'nouvelle_fonctionnalite'] as const
 export type TypeDemande = (typeof TYPES_DEMANDE)[number]
@@ -79,17 +80,19 @@ async function lireLigne(db: D1Database, id: string): Promise<Projet> {
   return projet
 }
 
-async function associerLogiciels(db: D1Database, projetId: string, ids: string[]): Promise<void> {
+/** Vérifie que chaque logiciel existe et renvoie la liste sans doublon. */
+async function verifierLogiciels(db: D1Database, ids: string[]): Promise<string[]> {
   const uniques = [...new Set(ids)]
   for (const id of uniques) {
     const existe = await db.prepare('SELECT id FROM logiciels WHERE id = ?').bind(id).first()
     if (!existe) throw new ErreurMetier(`Logiciel introuvable : ${id}`, 404)
   }
-  await db.batch([
-    db.prepare('DELETE FROM projet_logiciels WHERE projet_id = ?').bind(projetId),
-    ...uniques.map(id =>
-      db.prepare('INSERT INTO projet_logiciels (projet_id, logiciel_id) VALUES (?, ?)').bind(projetId, id)),
-  ])
+  return uniques
+}
+
+function insererLiens(db: D1Database, projetId: string, logicielIds: string[]): D1PreparedStatement[] {
+  return logicielIds.map(id =>
+    db.prepare('INSERT INTO projet_logiciels (projet_id, logiciel_id) VALUES (?, ?)').bind(projetId, id))
 }
 
 export async function lireProjet(db: D1Database, id: string): Promise<ProjetComplet> {
@@ -131,25 +134,26 @@ export async function listerProjets(
 export async function creerProjet(db: D1Database, saisie: CreationProjet): Promise<ProjetComplet> {
   const titre = saisie.titre.trim()
   if (!titre) throw new ErreurMetier('Le titre du projet est obligatoire.')
+  verifierLongueur(titre, LIMITES.titre_projet, 'Titre du projet trop long')
+  const description = saisie.description ?? ''
+  verifierLongueur(description, LIMITES.description, 'Description trop longue')
+  const logicielIds = await verifierLogiciels(db, saisie.logiciel_ids ?? [])
   const id = nouvelId()
   const maintenant = maintenantIso()
-  await db.prepare(
-    `INSERT INTO projets (id, titre, type_demande, description, modele_cadrage, modele_interview, modele_analyse, cree_le, maj_le)
-     VALUES (?,?,?,?,?,?,?,?,?)`,
-  ).bind(
-    id, titre, saisie.type_demande, saisie.description ?? '',
-    saisie.modeles?.cadrage ?? DEFAUTS.cadrage,
-    saisie.modeles?.interview ?? DEFAUTS.interview,
-    saisie.modeles?.analyse ?? DEFAUTS.analyse,
-    maintenant, maintenant,
-  ).run()
-  try {
-    if (saisie.logiciel_ids?.length) await associerLogiciels(db, id, saisie.logiciel_ids)
-  } catch (e) {
-    // Pas de projet à moitié créé si un logiciel est inconnu.
-    await db.prepare('DELETE FROM projets WHERE id = ?').bind(id).run()
-    throw e
-  }
+  // Le projet et ses liens partent ensemble : tout ou rien.
+  await db.batch([
+    db.prepare(
+      `INSERT INTO projets (id, titre, type_demande, description, modele_cadrage, modele_interview, modele_analyse, cree_le, maj_le)
+       VALUES (?,?,?,?,?,?,?,?,?)`,
+    ).bind(
+      id, titre, saisie.type_demande, description,
+      saisie.modeles?.cadrage ?? DEFAUTS.cadrage,
+      saisie.modeles?.interview ?? DEFAUTS.interview,
+      saisie.modeles?.analyse ?? DEFAUTS.analyse,
+      maintenant, maintenant,
+    ),
+    ...insererLiens(db, id, logicielIds),
+  ])
   return lireProjet(db, id)
 }
 
@@ -165,16 +169,26 @@ export async function modifierProjet(
     if (valeur !== undefined) maj[champ] = champ === 'titre' ? valeur.trim() : valeur
   }
   if (maj.titre !== undefined && !maj.titre) throw new ErreurMetier('Le titre du projet est obligatoire.')
+  if (maj.titre !== undefined) verifierLongueur(maj.titre, LIMITES.titre_projet, 'Titre du projet trop long')
+  if (maj.description !== undefined) verifierLongueur(maj.description, LIMITES.description, 'Description trop longue')
+  if (maj.note_cadrage !== undefined) verifierLongueur(maj.note_cadrage, LIMITES.note_cadrage, 'Note de cadrage trop longue')
+  if (maj.resume_contexte !== undefined) verifierLongueur(maj.resume_contexte, LIMITES.resume_contexte, 'Résumé de contexte trop long')
   // Un projet dont la note de cadrage vient d'être écrite est « cadré », sauf statut imposé.
   if (maj.statut === undefined && maj.note_cadrage?.trim() && actuel.statut === 'brouillon') maj.statut = 'cadre'
 
-  if (modifs.logiciel_ids) await associerLogiciels(db, id, modifs.logiciel_ids)
+  const logicielIds = modifs.logiciel_ids ? await verifierLogiciels(db, modifs.logiciel_ids) : undefined
 
   maj.maj_le = maintenantIso()
   // Les noms de colonnes viennent de CHAMPS_MODIFIABLES, jamais de la saisie.
   const colonnes = Object.keys(maj)
-  await db.prepare(`UPDATE projets SET ${colonnes.map(c => `${c} = ?`).join(', ')} WHERE id = ?`)
-    .bind(...colonnes.map(c => maj[c]), id).run()
+  // La mise à jour du projet et le remplacement des liens partent ensemble : tout ou rien.
+  await db.batch([
+    db.prepare(`UPDATE projets SET ${colonnes.map(c => `${c} = ?`).join(', ')} WHERE id = ?`)
+      .bind(...colonnes.map(c => maj[c]), id),
+    ...(logicielIds
+      ? [db.prepare('DELETE FROM projet_logiciels WHERE projet_id = ?').bind(id), ...insererLiens(db, id, logicielIds)]
+      : []),
+  ])
   return lireProjet(db, id)
 }
 
@@ -184,8 +198,18 @@ export async function ajouterDocument(
   await lireLigne(db, projetId)
   const nom = saisie.nom.trim()
   if (!nom || !saisie.contenu.trim()) throw new ErreurMetier('Le nom et le contenu du document sont obligatoires.')
+  verifierLongueur(nom, LIMITES.nom_document, 'Nom du document trop long')
+  verifierLongueur(saisie.contenu, LIMITES.contenu_document, 'Contenu du document trop long')
   const document: DocumentProjet = { id: nouvelId(), nom, contenu: saisie.contenu, cree_le: maintenantIso() }
   await db.prepare('INSERT INTO documents (id, projet_id, nom, contenu, cree_le) VALUES (?,?,?,?,?)')
     .bind(document.id, projetId, document.nom, document.contenu, document.cree_le).run()
+  return document
+}
+
+/** Renvoie un document avec son contenu complet. */
+export async function lireDocument(db: D1Database, id: string): Promise<DocumentProjet> {
+  const document = await db.prepare('SELECT id, nom, contenu, cree_le FROM documents WHERE id = ?')
+    .bind(id).first<DocumentProjet>()
+  if (!document) throw new ErreurMetier(`Document introuvable : ${id}`, 404)
   return document
 }

@@ -3,7 +3,7 @@ import { ErreurMetier } from '../erreurs'
 import { ETAPES_GUIDE, lireGuide } from '../guides'
 import { enregistrerLogiciel, lireLogiciel, listerLogiciels } from '../services/logiciels'
 import {
-  STATUTS_PROJET, TYPES_DEMANDE, ajouterDocument, creerProjet, lireProjet, listerProjets, modifierProjet,
+  STATUTS_PROJET, TYPES_DEMANDE, ajouterDocument, creerProjet, lireDocument, lireProjet, listerProjets, modifierProjet,
 } from '../services/projets'
 import { MODES, enregistrerQuestionnaire, lireQuestionnaire, publierQuestionnaire } from '../services/questionnaires'
 
@@ -37,6 +37,11 @@ function outil<S extends z.ZodObject>(definition: {
 }): Outil {
   return definition as unknown as Outil
 }
+
+const TAILLE_MORCEAU_MAX = 20_000
+
+/** Un texte en caractères entiers : une émoticône compte pour un, pas pour deux. */
+const caracteres = (texte: string): string[] => Array.from(texte)
 
 const idProjet = z.string().describe('Identifiant du projet, tel que renvoyé par creer_projet ou lister_projets')
 const idQuestionnaire = z.string().describe('Identifiant du questionnaire')
@@ -89,10 +94,36 @@ export const OUTILS: Outil[] = [
   outil({
     nom: 'lire_projet',
     description:
-      'Renvoie tout le contexte d\'un projet : description, type de demande, logiciels et leur fiche, documents joints, note de cadrage, liste des questionnaires. À appeler avant tout cadrage ou toute rédaction de questionnaire.',
+      "Renvoie le contexte d'un projet : description, type de demande, logiciels et leur fiche, note de cadrage, liste des questionnaires et liste des documents joints (identifiant, nom et taille en caractères, sans leur contenu : lire ceux qui sont utiles avec lire_document). À appeler avant tout cadrage ou toute rédaction de questionnaire.",
     lectureSeule: true,
     schema: z.object({ projet_id: idProjet }),
-    executer: async (ctx, { projet_id }) => lireProjet(ctx.db, projet_id),
+    executer: async (ctx, { projet_id }) => {
+      const projet = await lireProjet(ctx.db, projet_id)
+      // Les documents peuvent peser 200 000 caractères chacun : on n'en donne que l'entête.
+      return { ...projet, documents: projet.documents.map(d => ({ id: d.id, nom: d.nom, taille: caracteres(d.contenu).length })) }
+    },
+  }),
+  outil({
+    nom: 'lire_document',
+    description:
+      "Lit le texte d'un document joint à un projet, par morceaux de 20 000 caractères au plus. Renvoie { id, nom, taille, debut, texte, suite } : suite est la position de début du morceau suivant (à passer en debut pour le lire), ou null quand le document est lu en entier. Les identifiants des documents viennent de lire_projet.",
+    lectureSeule: true,
+    schema: z.object({
+      document_id: z.string().describe('Identifiant du document, tel que renvoyé par lire_projet'),
+      debut: z.number().int().min(0).default(0).describe('Position du premier caractère à lire (0 par défaut)'),
+      longueur: z.number().int().min(1).max(TAILLE_MORCEAU_MAX).default(TAILLE_MORCEAU_MAX)
+        .describe('Nombre de caractères à lire (20 000 au plus, 20 000 par défaut)'),
+    }),
+    executer: async (ctx, { document_id, debut, longueur }) => {
+      const document = await lireDocument(ctx.db, document_id)
+      const lettres = caracteres(document.contenu)
+      const fin = debut + longueur
+      return {
+        id: document.id, nom: document.nom, taille: lettres.length, debut,
+        texte: lettres.slice(debut, fin).join(''),
+        suite: fin < lettres.length ? fin : null,
+      }
+    },
   }),
   outil({
     nom: 'creer_projet',
@@ -138,7 +169,7 @@ export const OUTILS: Outil[] = [
   outil({
     nom: 'enregistrer_questionnaire',
     description:
-      "Crée un questionnaire en brouillon pour un public donné, ou remplace un brouillon existant si questionnaire_id est fourni. Le format de « contenu » dépend du mode et est décrit dans le guide « questionnaire ». Ne publie rien.",
+      "Crée un questionnaire en brouillon pour un public donné, ou remplace un brouillon existant si questionnaire_id est fourni. Au remplacement, les champs facultatifs omis (introduction, duree_estimee_min, relances_max_par_question, tours_max) conservent leur valeur actuelle ; seul tours_max suit le défaut du nouveau mode quand le mode change et qu'il est omis. Le format de « contenu » dépend du mode et est décrit dans le guide « questionnaire ». Ne publie rien.",
     lectureSeule: false,
     schema: z.object({
       questionnaire_id: idQuestionnaire.optional().describe('À fournir pour remplacer un brouillon'),
@@ -147,7 +178,7 @@ export const OUTILS: Outil[] = [
       mode: z.enum(MODES),
       contenu: z.record(z.string(), z.unknown()).describe('Hybride : { questions: [...] }. Entretien : { question_ouverture, themes: [...] }'),
       introduction: z.string().optional().describe("Texte d'accueil montré au répondant"),
-      duree_estimee_min: z.number().int().optional(),
+      duree_estimee_min: z.number().int().optional().describe('De 1 à 120 ; 10 par défaut'),
       relances_max_par_question: z.number().int().optional().describe('Mode hybride, de 0 à 3 ; 1 par défaut'),
       tours_max: z.number().int().optional().describe('Plafond de relances au total (hybride, 12 par défaut) ou de questions (entretien, 15 par défaut)'),
     }),
@@ -174,6 +205,8 @@ export const OUTILS: Outil[] = [
   }),
 ]
 
+const MESSAGE_ERREUR_INTERNE = 'Erreur interne du serveur. Réessayez ; si le problème persiste, consultez les journaux.'
+
 function enErreur(message: string): ResultatOutil {
   return { content: [{ type: 'text', text: message }], isError: true }
 }
@@ -186,7 +219,9 @@ export async function executerOutil(ctx: Contexte, outilChoisi: Outil, args: unk
     return { content: [{ type: 'text', text }] }
   } catch (e) {
     if (e instanceof ErreurMetier) return enErreur(e.message)
-    throw e
+    // Le détail (par exemple une erreur D1) reste dans les journaux : il n'a rien à faire dans la conversation.
+    console.error(`MCP : erreur inattendue dans l'outil ${outilChoisi.nom}`, e)
+    return enErreur(MESSAGE_ERREUR_INTERNE)
   }
 }
 

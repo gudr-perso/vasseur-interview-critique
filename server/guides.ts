@@ -7,7 +7,7 @@ But : comprendre assez bien la demande pour écrire ensuite les questions à pos
 
 ## Avant de poser une question
 
-Lis le projet avec lire_projet : description, logiciels concernés et leur fiche de contexte, documents joints. Ne redemande jamais ce qui s'y trouve déjà.
+Lis le projet avec lire_projet : description, logiciels concernés et leur fiche de contexte, liste des documents joints (nom et taille, sans le contenu). Lis ensuite les documents utiles avec lire_document, par morceaux de 20 000 caractères au plus : passe la valeur de « suite » dans « debut » tant qu'elle n'est pas nulle. Ne redemande jamais ce qui s'y trouve déjà.
 
 ## Profondeur selon le type de demande
 
@@ -46,7 +46,7 @@ Montre la note au porteur, corrige-la selon ses remarques, puis enregistre-la av
 
 const QUESTIONNAIRE = `# Guide de rédaction d'un questionnaire
 
-But : à partir de la note de cadrage, écrire ce qui sera demandé aux utilisateurs. Relis le projet avec lire_projet avant de commencer. Si la note de cadrage est vide, fais d'abord le cadrage.
+But : à partir de la note de cadrage, écrire ce qui sera demandé aux utilisateurs. Relis le projet avec lire_projet avant de commencer, et lis les documents utiles avec lire_document (la liste donne leur nom et leur taille, pas leur contenu). Si la note de cadrage est vide, fais d'abord le cadrage.
 
 ## Un questionnaire par public
 
@@ -79,7 +79,9 @@ L'introduction est le premier écran que voit le répondant : en trois ou quatre
   ]
 }
 
-Types possibles : texte, choix_unique, choix_multiple, echelle (de 1 à 5). Les options, de 2 à 10, ne concernent que les deux types de choix. Chaque question accepte en plus un commentaire libre du répondant.
+Types possibles : texte, choix_unique, choix_multiple, echelle (de 1 à 5). Les options, de 2 à 10, sans doublon (casse et espaces ignorés), ne concernent que les deux types de choix. Un questionnaire hybride compte 40 questions au plus. Chaque question accepte en plus un commentaire libre du répondant.
+
+Un libellé et un objectif font 500 caractères au plus ; une option, 200 caractères au plus. Les identifiants (id) sont facultatifs : sans id, les questions s'appellent q1, q2… dans l'ordre. Un id compte de 1 à 40 caractères, uniquement des lettres, chiffres, tiret et souligné (sans accent ni espace), et ne peut pas servir deux fois dans le même questionnaire.
 
 Le champ objectif est obligatoire et n'est jamais montré au répondant : il dit ce qu'on cherche à apprendre, et c'est d'après lui que l'IA jugera si une réponse mérite une relance. Écris-le précisément.
 
@@ -93,7 +95,16 @@ Le champ objectif est obligatoire et n'est jamais montré au répondant : il dit
   ]
 }
 
-De 3 à 6 thèmes en général, 12 au plus. La question d'ouverture invite à raconter une situation vécue.
+De 3 à 6 thèmes en général, 12 au plus. La question d'ouverture (500 caractères au plus) invite à raconter une situation vécue. Un titre de thème fait 200 caractères au plus, son objectif 500. Les identifiants de thème (id, facultatifs) suivent les mêmes règles que ceux des questions : t1, t2… à défaut.
+
+## Réglages
+
+- duree_estimee_min : de 1 à 120 minutes, 10 par défaut. C'est ce qu'annonce l'introduction.
+- relances_max_par_question : de 0 à 3, 1 par défaut (mode hybride).
+- tours_max : de 1 à 30. En hybride, nombre total de relances, 12 par défaut ; en entretien, nombre de questions posées, 15 par défaut.
+- introduction : 2 000 caractères au plus. public_vise : 200 caractères au plus.
+
+Quand tu remplaces un brouillon, ces réglages omis gardent leur valeur actuelle ; seul tours_max reprend le défaut du nouveau mode si le mode change.
 
 ## Enregistrer et publier
 

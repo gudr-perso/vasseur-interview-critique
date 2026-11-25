@@ -76,11 +76,11 @@ describe.each(GENERATIONS)('protocole, via le client officiel — $nom', ({ opti
     const client = await connecter(`https://exemple.test/mcp/${JETON}`, {}, r => parJeton(contexte(r, JETON)))
     const { tools } = await client.listTools()
     expect(tools.map(t => t.name)).toContain('creer_projet')
-    expect(tools).toHaveLength(12)
+    expect(tools).toHaveLength(13)
     expect(tools.find(t => t.name === 'lire_projet')?.inputSchema.required).toEqual(['projet_id'])
     expect(tools.find(t => t.name === 'creer_projet')?.inputSchema.required).toEqual(['titre', 'type_demande'])
     expect(tools.filter(t => t.annotations?.readOnlyHint).map(t => t.name).sort()).toEqual(
-      ['lire_guide', 'lire_logiciel', 'lire_projet', 'lire_questionnaire', 'lister_logiciels', 'lister_projets'],
+      ['lire_document', 'lire_guide', 'lire_logiciel', 'lire_projet', 'lire_questionnaire', 'lister_logiciels', 'lister_projets'],
     )
     for (const outil of tools) expect(outil.annotations?.readOnlyHint, outil.name).toBeTypeOf('boolean')
 
@@ -111,7 +111,7 @@ describe.each(GENERATIONS)('protocole, via le client officiel — $nom', ({ opti
     expect(invalide.isError).toBe(true)
     expect((invalide.content as { text: string }[])[0].text).toContain('type_demande')
 
-    expect((await client.listTools()).tools).toHaveLength(12)
+    expect((await client.listTools()).tools).toHaveLength(13)
     await client.close()
   })
 
@@ -121,6 +121,18 @@ describe.each(GENERATIONS)('protocole, via le client officiel — $nom', ({ opti
     await client.close()
     expect(reponses.length).toBeGreaterThan(1)
     for (const reponse of reponses) expect(reponse.headers.get('mcp-session-id')).toBeNull()
+  })
+})
+
+describe('schéma Bearer', () => {
+  it.each(['Bearer', 'bearer', 'BEARER', 'bEaReR'])('accepte « %s » quelle que soit la casse', async schema => {
+    const requete = post('https://exemple.test/mcp', { Authorization: `${schema} ${JETON}` })
+    expect((await parEnTete(contexte(requete))).status).toBe(200)
+  })
+
+  it('refuse un autre schéma, ou un jeton absent', async () => {
+    expect((await parEnTete(contexte(post('https://exemple.test/mcp', { Authorization: `Basic ${JETON}` })))).status).toBe(401)
+    expect((await parEnTete(contexte(post('https://exemple.test/mcp', { Authorization: 'bearer' })))).status).toBe(401)
   })
 })
 

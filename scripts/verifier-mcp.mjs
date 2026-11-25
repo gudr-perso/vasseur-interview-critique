@@ -9,7 +9,7 @@ if (!jeton) {
   process.exit(1)
 }
 
-const OUTILS_ATTENDUS = 12
+const OUTILS_ATTENDUS = 13
 let echec = false
 
 async function controler(libelle, options) {

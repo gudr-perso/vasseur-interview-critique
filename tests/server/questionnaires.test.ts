@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { creerProjet, lireProjet } from '../../server/services/projets'
 import { enregistrerQuestionnaire, lireQuestionnaire, publierQuestionnaire } from '../../server/services/questionnaires'
 import { creerBaseDeTest } from '../helpers/d1'
+import { espionner } from '../helpers/espion'
 
 let base: Awaited<ReturnType<typeof creerBaseDeTest>>
 let projetId: string
@@ -92,5 +93,96 @@ describe('questionnaires', () => {
     await expect(enregistrerQuestionnaire(base.db, {
       id: q.id, projet_id: autre, public_vise: 'Fixe', mode: 'hybride', contenu: hybride,
     })).rejects.toThrow('appartient à un autre projet')
+  })
+})
+
+describe('remplacement d\'un brouillon : champs facultatifs', () => {
+  it('conserve les valeurs existantes quand les champs sont omis', async () => {
+    const q = await enregistrerQuestionnaire(base.db, {
+      projet_id: projetId, public_vise: 'Conserve', mode: 'hybride', contenu: hybride,
+      introduction: 'Bonjour', duree_estimee_min: 25, relances_max_par_question: 3, tours_max: 20,
+    })
+    const maj = await enregistrerQuestionnaire(base.db, {
+      id: q.id, projet_id: projetId, public_vise: 'Conserve', mode: 'hybride', contenu: hybride,
+    })
+    expect(maj).toMatchObject({ introduction: 'Bonjour', duree_estimee_min: 25, relances_max_par_question: 3, tours_max: 20 })
+  })
+
+  it('remplace seulement les champs fournis', async () => {
+    const q = await enregistrerQuestionnaire(base.db, {
+      projet_id: projetId, public_vise: 'Partiel', mode: 'hybride', contenu: hybride,
+      introduction: 'Bonjour', duree_estimee_min: 25, tours_max: 20,
+    })
+    const maj = await enregistrerQuestionnaire(base.db, {
+      id: q.id, projet_id: projetId, public_vise: 'Partiel', mode: 'hybride', contenu: hybride, duree_estimee_min: 30,
+    })
+    expect(maj).toMatchObject({ introduction: 'Bonjour', duree_estimee_min: 30, tours_max: 20 })
+  })
+
+  it('applique le plafond de tours du nouveau mode quand le mode change et tours_max est omis', async () => {
+    const q = await enregistrerQuestionnaire(base.db, {
+      projet_id: projetId, public_vise: 'Change de mode', mode: 'hybride', contenu: hybride, tours_max: 20,
+    })
+    const maj = await enregistrerQuestionnaire(base.db, {
+      id: q.id, projet_id: projetId, public_vise: 'Change de mode', mode: 'entretien', contenu: entretien,
+    })
+    expect(maj).toMatchObject({ mode: 'entretien', tours_max: 15 })
+    const retour = await enregistrerQuestionnaire(base.db, {
+      id: q.id, projet_id: projetId, public_vise: 'Change de mode', mode: 'hybride', contenu: hybride,
+    })
+    expect(retour.tours_max).toBe(12)
+  })
+})
+
+describe('concurrence sur un brouillon', () => {
+  it('ne remplace pas un brouillon devenu publié entre la lecture et l\'écriture', async () => {
+    const q = await enregistrerQuestionnaire(base.db, {
+      projet_id: projetId, public_vise: 'Course', mode: 'hybride', contenu: hybride,
+    })
+    let fait = false
+    const espion = espionner(base.db, async sql => {
+      if (!fait && sql.startsWith('UPDATE questionnaires')) {
+        fait = true
+        await base.db.prepare("UPDATE questionnaires SET statut = 'ouvert' WHERE id = ?").bind(q.id).run()
+      }
+    })
+    await expect(enregistrerQuestionnaire(espion.db, {
+      id: q.id, projet_id: projetId, public_vise: 'Écrasé', mode: 'hybride', contenu: hybride,
+    })).rejects.toMatchObject({ statut: 409 })
+    const relu = await lireQuestionnaire(base.db, q.id)
+    expect(relu).toMatchObject({ public_vise: 'Course', statut: 'ouvert' })
+  })
+
+  it('renvoie le résultat normal quand une publication concurrente a déjà ouvert le questionnaire', async () => {
+    const q = await enregistrerQuestionnaire(base.db, {
+      projet_id: projetId, public_vise: 'Double publication', mode: 'hybride', contenu: hybride,
+    })
+    let fait = false
+    const espion = espionner(base.db, async sql => {
+      if (!fait && sql.startsWith('UPDATE questionnaires')) {
+        fait = true
+        await publierQuestionnaire(base.db, q.id, 'https://x.fr')
+      }
+    })
+    const publie = await publierQuestionnaire(espion.db, q.id, 'https://x.fr')
+    expect(publie.questionnaire.statut).toBe('ouvert')
+    expect(publie.url).toBe(`https://x.fr/q/${q.code}`)
+  })
+
+  it('ne rouvre pas un questionnaire clos entre la lecture et la publication, et laisse le projet intact', async () => {
+    const projet = (await creerProjet(base.db, { titre: 'Course clos', type_demande: 'amelioration' })).id
+    const q = await enregistrerQuestionnaire(base.db, {
+      projet_id: projet, public_vise: 'Clos entre-temps', mode: 'hybride', contenu: hybride,
+    })
+    let fait = false
+    const espion = espionner(base.db, async sql => {
+      if (!fait && sql.startsWith('UPDATE questionnaires')) {
+        fait = true
+        await base.db.prepare("UPDATE questionnaires SET statut = 'clos' WHERE id = ?").bind(q.id).run()
+      }
+    })
+    await expect(publierQuestionnaire(espion.db, q.id, 'https://x.fr')).rejects.toMatchObject({ statut: 409 })
+    expect((await lireQuestionnaire(base.db, q.id)).statut).toBe('clos')
+    expect((await lireProjet(base.db, projet)).statut).toBe('brouillon')
   })
 })
