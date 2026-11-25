@@ -8,3 +8,6 @@ ANTHROPIC_API_KEY=sk-ant-votre-cle-ici
 ADMIN_PASSWORD=choisissez-un-mot-de-passe
 # Secret de signature des sessions : 32 caractères aléatoires ou plus
 SESSION_SECRET=remplacez-par-une-longue-chaine-aleatoire
+
+# Jeton d'accès au serveur MCP : 32 caractères aléatoires ou plus
+MCP_TOKEN=remplacez-par-une-longue-chaine-aleatoire

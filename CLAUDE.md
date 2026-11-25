@@ -46,8 +46,12 @@ src/
   admin/               — LoginScreen, AdminHome
   routes/              — RequireAdmin
 shared/                — types et constantes communs navigateur / serveur
-server/                — logique serveur : auth, modeles, http, env
+server/                — logique serveur : auth, modeles, http, env, ids, erreurs, guides
+  services/            — logiciels, projets, questionnaires (règles métier sur D1)
+  mcp/                 — outils, serveur et contrôle d'accès MCP
 functions/api/         — routes : messages.ts (proxy), admin/*
+functions/mcp/         — serveur MCP : /mcp/<jeton> et /mcp (Bearer)
+scripts/               — verifier-mcp.mjs
 migrations/            — schéma D1
 tests/                 — tests Vitest (server/, functions/)
 ```
@@ -58,6 +62,11 @@ React Router : `/` (interview critique), `/admin`, toute autre adresse → « Li
 À l'intérieur de l'interview critique, la navigation reste pilotée par `useStore().screen` :
 `config` → `loading` → `interview` → `synthesis`, et `config`/`synthesis` → `templates` → retour.
 
+## Serveur MCP
+
+Cadrage, questionnaires et publication depuis Claude : voir `docs/mcp.md`. Secret `MCP_TOKEN`.
+Toute règle métier vit dans `server/services/` ; un outil MCP ne fait que valider ses arguments et appeler un service.
+
 ## Déploiement Cloudflare Pages
 
 ```bash
@@ -66,7 +75,7 @@ npm run build
 # Build command  : npm run build
 # Build output   : dist/
 # Root directory : /
-# Secrets : ANTHROPIC_API_KEY, ADMIN_PASSWORD, SESSION_SECRET
+# Secrets : ANTHROPIC_API_KEY, ADMIN_PASSWORD, SESSION_SECRET, MCP_TOKEN
 # Base D1 : identifiant dans wrangler.toml, migrations par
 #   npx wrangler d1 migrations apply vasseur-interview --remote
 ```

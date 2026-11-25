@@ -106,8 +106,10 @@ Objectif : faire dans Claude (claude.ai, Claude Desktop, Claude Code) le cadrage
 | Outil | Rôle |
 |---|---|
 | `lister_logiciels`, `lire_logiciel`, `enregistrer_logiciel` | référentiel et fiches de contexte |
-| `lister_projets`, `lire_projet` | retrouver un projet avec son contexte complet (logiciels, docs, note de cadrage, questionnaires) |
+| `lister_projets`, `lire_projet` | retrouver un projet avec son contexte (logiciels, note de cadrage, questionnaires, liste des documents sans leur contenu) |
 | `creer_projet`, `modifier_projet` | créer et mettre à jour, y compris la note de cadrage |
+| `ajouter_document` | joint au projet un texte de contexte |
+| `lire_document` | lit un document joint par morceaux de 20 000 caractères au plus |
 | `lire_guide` | renvoie la méthode à suivre pour une étape (`cadrage`, `questionnaire`, `fiche_repondant`, `synthese`, `expression_besoin`) et le format attendu |
 | `enregistrer_questionnaire`, `lire_questionnaire` | créer ou remplacer un questionnaire en brouillon |
 | `publier_questionnaire` | passe en `ouvert` et renvoie l'URL |
@@ -170,7 +172,9 @@ Ajout de Vitest. Couverture visée sur la logique serveur : contrôle de session
 Chaque lot fait l'objet de son propre plan d'implémentation et est livrable seul.
 
 1. **Socle** — D1 et migrations, couche de services, React Router, session admin, proxy verrouillé, catalogue de modèles branché sur l'interview critique.
-2. **Admin sans IA + MCP** — logiciels, projets, documents, édition et publication des questionnaires, serveur MCP avec `lire_guide`. À ce stade, cadrage et génération sont déjà faisables dans Claude.
+2. **Admin sans IA + MCP**, en deux temps :
+   - **2A — Services et MCP** : services logiciels, projets, questionnaires ; serveur MCP avec `lire_guide`. Cadrage, génération et publication sont alors faisables dans Claude.
+   - **2B — Écrans admin** : API admin et écrans des logiciels, des projets, d'édition et de publication des questionnaires.
 3. **Répondant** — liens générique et nominatif, identité, passation hybride et entretien, invitations et suivi dans l'admin.
-4. **Analyses** — lecture des entretiens, analyses via MCP et via l'admin (API), exports.
+4. **Analyses** — lecture des entretiens, analyses via MCP et via l'admin (API), exports. Les outils MCP de lecture des réponses et de dépôt d'analyses sont livrés avec ce lot.
 5. **IA dans l'admin** — dialogue de cadrage et génération de questionnaires par l'API, avec les modèles du projet.
