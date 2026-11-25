@@ -42,11 +42,13 @@ Identifiants : texte aléatoire. Dates : ISO 8601 UTC. Suppression en cascade du
 - **documents** — `id`, `projet_id`, `nom`, `contenu` (texte extrait), `cree_le`
 - **cadrage_messages** — `id`, `projet_id`, `role` (`ia` | `admin`), `contenu`, `cree_le` — dialogue de cadrage mené dans l'admin web
 - **questionnaires** — `id`, `projet_id`, `public_vise`, `mode` (`hybride` | `entretien`), `introduction` (texte d'accueil), `duree_estimee_min`, `contenu` (JSON, voir ci-dessous), `relances_max_par_question` (hybride, défaut 1), `tours_max` (défaut 12 relances au total en hybride, 15 tours en entretien), `code` (unique, 10 caractères aléatoires), `statut` (`brouillon` | `ouvert` | `clos`), `cree_le`, `maj_le`
-- **repondants** — `id`, `questionnaire_id`, `jeton` (unique, 22 caractères), `nom`, `prenom`, `poste`, `entreprise`, `mail`, `origine` (`invitation` | `lien_generique`), `statut` (`invite` | `commence` | `termine`), `commence_le`, `termine_le`
+- **repondants** — `id`, `questionnaire_id`, `jeton` (unique, 22 caractères), `nom`, `prenom`, `poste`, `entreprise`, `mail`, `origine` (`invitation` | `lien_generique`), `statut` (`invite` | `commence` | `termine`), `commence_le`, `termine_le`, et le suivi du calcul de la suite (migration 0002) : `suite_debut` (début du calcul en cours, nul sinon), `suite_essais` (essais ratés pour l'étape en cours), `suite_essai_le` (début du dernier essai)
 - **tours** — `id`, `repondant_id`, `ordre`, `question_id` (nul en mode entretien ou pour une relance libre), `type` (`question` | `relance`), `question` (texte posé), `reponse` (JSON : valeur(s) choisie(s), texte, commentaire), `cree_le`
 - **analyses** — `id`, `projet_id`, `questionnaire_id` (optionnel), `repondant_id` (pour une fiche individuelle), `type` (`fiche_repondant` | `synthese` | `expression_besoin`), `contenu` (Markdown), `source` (identifiant du modèle API, ou `mcp`), `nb_entretiens`, `cree_le`
 
 Un projet a **un ou plusieurs questionnaires**, un par public visé. Un répondant appartient à un seul questionnaire.
+
+**Contexte transmis à l'IA pendant un entretien** : titre du projet, public visé, noms des logiciels, résumé de contexte du projet, objectif de chaque question ou thème. Pour une décision de relance, en plus : les échanges déjà faits dans l'entretien (relances comprises) et les libellés des questions encore à venir. **La note de cadrage, la description et les documents ne sont jamais transmis** : la note contient les hypothèses internes de l'équipe, qu'un répondant ne doit pas voir reformulées dans une question. Les colonnes lues pour l'IA sont choisies une à une (`server/services/entretiens.ts`).
 
 ### Contenu d'un questionnaire
 
@@ -86,14 +88,17 @@ Mode entretien — guide :
 
 ## 5. Parcours répondant
 
-- `/q/<code>` : lien générique. Le répondant saisit nom, prénom, poste, entreprise, mail ; un répondant est créé et son jeton gardé dans le navigateur pour permettre la reprise.
+- `/q/<code>` : lien générique. Le répondant saisit son identité — nom, prénom et entreprise obligatoires, poste et mail facultatifs ; un répondant est créé et son jeton gardé dans le navigateur pour permettre la reprise. Le jeton est oublié dès la fin de l'entretien, et l'écran propose « Vous n'êtes pas <prénom> ? Commencer une nouvelle participation » : sur un poste partagé, la personne suivante repart de l'accueil.
+- **Plafond** : 300 répondants au plus par lien générique et par questionnaire (les invitations ne comptent pas) ; au-delà, « Ce questionnaire a atteint son nombre maximal de participants. ». Chaque entretien est borné par `tours_max`, une réponse par 4 000 caractères, un corps de requête publique par 64 Ko.
 - `/r/<jeton>` : lien nominatif, identité pré-remplie et corrigeable.
 - Déroulé : accueil (introduction, durée estimée, mention sur l'usage des données) → identité → questions une à une → remerciement.
 - Chaque réponse est enregistrée avant d'afficher la suite. Rouvrir le lien reprend là où on s'est arrêté.
 - Un questionnaire `brouillon` ou `clos` affiche un message d'indisponibilité. Un entretien `termine` affiche le remerciement.
-- **Hybride** : après chaque réponse, le serveur demande à l'IA s'il faut relancer, en lui donnant la question, son objectif et la réponse. Relance posée si les plafonds le permettent, sinon question suivante.
+- **Hybride** : après chaque réponse, le serveur demande à l'IA s'il faut relancer, en lui donnant la question, son objectif, la réponse, les échanges précédents et les questions à venir. Par défaut, pas de relance : une relance doit apporter ce qui manque, sans redemander ce qui a été dit ni ce qu'une question à venir couvrira (jeu d'évaluation : `npm run eval:relances`). Relance posée si les plafonds le permettent, sinon question suivante.
 - **Entretien** : le serveur donne à l'IA le guide et les tours précédents ; elle renvoie la question suivante et les thèmes couverts, ou la fin d'entretien. Fin forcée à `tours_max`.
 - Ton : bienveillant, neutre, vouvoiement, une seule question à la fois, jamais de jugement sur les réponses.
+- **Panne ou refus de l'IA** : en mode hybride, question suivante sans relance ; en mode entretien, « Un problème technique interrompt l'entretien », avec « Réessayer » et « Terminer l'entretien ». « Réessayer » est permis trois fois par étape, à 10 secondes d'intervalle au moins ; ensuite seul « Terminer l'entretien » reste proposé. Pas de modèle de repli automatique. Chaque appel à l'IA est borné à 12 s, avec un seul nouvel essai.
+- **Calcul de la suite** : un seul à la fois par répondant (`suite_debut`, expiré au bout de 60 s). Pendant ce temps, l'étape publique est « attente » et le navigateur relit l'état toutes les 2 secondes ; un second envoi de la même réponse ne relance pas l'IA, et « Terminer » est refusé.
 
 ## 6. Serveur MCP
 
@@ -156,9 +161,10 @@ Le code partagé est hors de `functions/` pour qu'aucun de ses fichiers ne devie
 ## 8. Erreurs et cas limites
 
 - IA indisponible pendant une relance : pas de relance, question suivante.
-- IA indisponible en mode entretien : message d'attente et bouton « Réessayer » ; les tours déjà saisis sont conservés.
+- IA indisponible en mode entretien : message « problème technique », « Réessayer » (3 fois, espacées de 10 s) et « Terminer l'entretien » ; les tours déjà saisis sont conservés.
 - Génération admin en échec : message clair, relance possible, rien n'est écrasé.
-- Double envoi d'une même réponse : le serveur ignore un tour déjà enregistré.
+- Double envoi d'une même réponse : le serveur ignore un tour déjà enregistré ; si la suite est en cours de calcul, il répond « attente ».
+- Répondant supprimé pendant le calcul de la suite : « lien invalide », aucun tour orphelin.
 - Code ou jeton inconnu : page « lien invalide », sans indice sur l'existence d'autres questionnaires.
 - Mauvais mot de passe : délai d'une seconde avant la réponse.
 - Suppression d'un projet : confirmation avec le nombre d'entretiens concernés.
@@ -175,6 +181,6 @@ Chaque lot fait l'objet de son propre plan d'implémentation et est livrable seu
 2. **Admin sans IA + MCP**, en deux temps :
    - **2A — Services et MCP** (livré) : services logiciels, projets, questionnaires ; serveur MCP avec `lire_guide`. Cadrage, génération et publication sont alors faisables dans Claude.
    - **2B — Écrans admin** (livré) : API admin et écrans des logiciels, des projets, d'édition et de publication des questionnaires.
-3. **Répondant** — liens générique et nominatif, identité, passation hybride et entretien, invitations et suivi dans l'admin.
+3. **Répondant** (livré) — liens générique et nominatif, identité, passation hybride et entretien, invitations et suivi dans l'admin. Migration 0002 à appliquer en production.
 4. **Analyses** — lecture des entretiens, analyses via MCP et via l'admin (API), exports. Les outils MCP de lecture des réponses et de dépôt d'analyses sont livrés avec ce lot.
 5. **IA dans l'admin** — dialogue de cadrage et génération de questionnaires par l'API, avec les modèles du projet.

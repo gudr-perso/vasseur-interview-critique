@@ -22,7 +22,11 @@ npm run pages:dev    # wrangler pages dev dist --port 8790 — frontend + API
 npm run preview      # Preview du build
 npm test             # Tests serveur (Vitest)
 npm run db:local     # Applique les migrations D1 en local
+npm run eval:relances  # Évaluation des relances avec l'IA réelle (payant, hors de npm test)
 ```
+
+`eval:relances` lit `ANTHROPIC_API_KEY` dans l'environnement (et le modèle dans `EVAL_MODELE`, défaut `claude-sonnet-5-5`) ; sans clé, il ne fait rien. Sans afficher la clé :
+`ANTHROPIC_API_KEY=$(grep '^ANTHROPIC_API_KEY=' .dev.vars | cut -d= -f2- | tr -d '\r') npm run eval:relances` — un appel par cas, une dizaine de cas.
 
 ## Développement local avec l'API
 
@@ -32,7 +36,7 @@ npm run db:local     # Applique les migrations D1 en local
 4. Terminal 1 : `npm run dev` (port 5173) — Vite relaie `/api` vers le port 8790
 5. Terminal 2 : `npm run pages:dev` (Functions + D1, port 8790)
 
-Tout appel à `/api/messages` et `/api/admin/*` exige la session admin (cookie posé par `/api/admin/login`).
+Tout appel à `/api/messages` et `/api/admin/*` exige la session admin (cookie posé par `/api/admin/login`). `/api/public/*` (parcours répondant) n'en demande aucune.
 
 ## Architecture
 
@@ -43,24 +47,27 @@ src/
   lib/                 — api.ts, adminApi.ts, modeles.ts, templates.ts, presets.ts
   components/          — ui/, layout/
   screens/             — écrans de l'interview critique, NotFound
-  admin/               — écrans admin : projets, logiciels, fiche projet, éditeur de questionnaire ;
+  admin/               — écrans admin : projets, logiciels, fiche projet, éditeur de questionnaire, répondants ;
                          api.ts (client), contenu.ts (logique d'édition), extraction.ts (texte des fichiers)
+  repondant/           — parcours répondant : lien générique, entretien, saisies ; api.ts, stockage.ts, textes.ts
   routes/              — RequireAdmin
-shared/                — types et constantes communs navigateur / serveur (modeles.ts, interviews.ts)
-server/                — logique serveur : auth, modeles, http, env, ids, erreurs, guides
-  services/            — logiciels, projets, questionnaires (règles métier sur D1)
+shared/                — types et constantes communs navigateur / serveur (modeles.ts, interviews.ts, repondants.ts)
+server/                — logique serveur : auth, modeles, http, env, ids, erreurs, guides, api (enveloppe des routes)
+  services/            — logiciels, projets, questionnaires, repondants, reponses, entretiens (règles métier sur D1)
+  ia/                  — décisions de l'IA pendant un entretien : types.ts (interface Ia), consignes.ts, anthropic.ts
   mcp/                 — outils, serveur et contrôle d'accès MCP
-functions/api/         — routes : messages.ts (proxy), admin/{logiciels,projets,documents,questionnaires}
+functions/api/         — routes : messages.ts (proxy), admin/{logiciels,projets,documents,questionnaires,repondants},
+                         public/{q/[code],r/[jeton]} (parcours répondant, sans session)
 functions/mcp/         — serveur MCP : /mcp/<jeton> et /mcp (Bearer)
 scripts/               — verifier-mcp.mjs
 migrations/            — schéma D1
-tests/                 — tests Vitest (server/, functions/)
+tests/                 — tests Vitest (server/, functions/, src/) ; helpers/ (D1, IA simulée) ; eval/ (IA réelle)
 ```
 
 ## Navigation
 
-React Router : `/` (interview critique), `/admin`, toute autre adresse → « Lien invalide ». Ces deux pages passent par `RequireAdmin`.
-Admin : `/admin` (projets), `/admin/logiciels`, `/admin/projets/nouveau`, `/admin/projets/:id`, `/admin/questionnaires/:id`.
+React Router : `/` (interview critique), `/admin`, `/q/:code` et `/r/:jeton` (parcours répondant, publics), toute autre adresse → « Lien invalide ». `/` et `/admin` passent par `RequireAdmin`.
+Admin : `/admin` (projets), `/admin/logiciels`, `/admin/projets/nouveau`, `/admin/projets/:id`, `/admin/questionnaires/:id`, `/admin/repondants/:id` (lecture d’un entretien).
 Les écrans admin avertissent avant de quitter une page qui porte une saisie non enregistrée : routeur de données (`createBrowserRouter`) et `useBlocker`, dans `src/admin/saisies.tsx`.
 À l'intérieur de l'interview critique, la navigation reste pilotée par `useStore().screen` :
 `config` → `loading` → `interview` → `synthesis`, et `config`/`synthesis` → `templates` → retour.
@@ -74,6 +81,12 @@ Toute règle métier vit dans `server/services/` ; un outil MCP ne fait que vali
 
 `/api/admin/*`, protégée par la session. Une route = validation Zod (`server/schemas.ts`) + appel d'un service, dans l'enveloppe `route()` de `server/api.ts` qui traduit les `ErreurMetier`. Les mêmes services servent le MCP : une règle métier ne s'écrit qu'une fois, dans `server/services/`.
 
+## Parcours répondant
+
+Routes publiques `/api/public/*`, sans session : l'accès se fait par le code du questionnaire ou le jeton du répondant. Le serveur porte tout l'état : chaque question posée est un tour, dont la réponse reste vide jusqu'à l'envoi. L'IA (relances, entretien) passe par l'interface `Ia` de `server/ia/types.ts` ; les tests utilisent `tests/helpers/ia.ts`. Ne jamais transmettre à l'IA ni au navigateur du répondant la note de cadrage, les objectifs ou des identifiants internes.
+
+Le calcul de la suite (relance, question suivante, fin) se fait sous une « main » posée dans `repondants.suite_debut` par une écriture conditionnelle : un seul calcul à la fois, étape publique `attente` pendant ce temps, expiration à 60 s. « Réessayer » après une panne : 3 fois par étape, espacées de 10 s (sinon 429). Toute écriture d'un tour vérifie dans la même requête que le répondant est encore `commence`.
+
 ## Déploiement Cloudflare Pages
 
 ```bash
@@ -86,6 +99,8 @@ npm run build
 # Base D1 : identifiant dans wrangler.toml, migrations par
 #   npx wrangler d1 migrations apply vasseur-interview --remote
 ```
+
+Migration 0002 à appliquer en production : `npx wrangler d1 migrations apply vasseur-interview --remote` (et sur la base de preview).
 
 ### Sécurité de l'accès admin
 
