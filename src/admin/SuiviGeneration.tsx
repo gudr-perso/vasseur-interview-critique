@@ -1,11 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Button } from '../components/ui/Button'
 import { Spinner } from '../components/ui/Spinner'
 import { ApercuMarkdown } from './ApercuMarkdown'
 import { CLASSE_AIDE } from './champs'
 import { Alerte, CLASSE_LIEN_BOUTON, Confirmation } from './commun'
-import type { EtatGeneration } from './generation'
+import { AVERTISSEMENT_SORTIE, type EtatGeneration } from './generation'
 import { nombre } from './libelles'
 
 /** Temps écoulé depuis `debut`, rafraîchi chaque seconde. */
@@ -42,7 +41,7 @@ function ApercuDirect({ texte }: { texte: string }) {
 
 const CLASSE_ETAT = 'font-mono text-[0.66rem] uppercase tracking-wider'
 
-function EnCours({ etat, onDetacher }: { etat: Extract<EtatGeneration, { phase: 'en_cours' }>; onDetacher: () => void }) {
+function EnCours({ etat }: { etat: Extract<EtatGeneration, { phase: 'en_cours' }> }) {
   const demarre = etat.nb_entretiens !== null
   return (
     <>
@@ -54,13 +53,9 @@ function EnCours({ etat, onDetacher }: { etat: Extract<EtatGeneration, { phase: 
         <span className={`${CLASSE_ETAT} text-muted`}>
           <Duree debut={etat.debut} />{etat.texte && ` · ${nombre(etat.texte.length)} caractères`}
         </span>
-        {demarre && <Button size="sm" variant="ghost" onClick={onDetacher}>Arrêter de suivre</Button>}
       </div>
-      <p className={CLASSE_AIDE}>
-        {etat.texte
-          ? "Arrêter de suivre ne stoppe pas la génération : l'analyse sera enregistrée et apparaîtra dans la liste."
-          : "L'IA lit les entretiens ; le texte s'affichera ici dès les premiers mots."}
-      </p>
+      <p className="text-[0.8rem] text-warn-fg font-medium mt-2 leading-snug">{AVERTISSEMENT_SORTIE}</p>
+      {!etat.texte && <p className={CLASSE_AIDE}>L'IA lit les entretiens ; le texte s'affichera ici dès les premiers mots.</p>}
       <ApercuDirect texte={etat.texte} />
     </>
   )
@@ -85,21 +80,14 @@ function Terminee({ etat }: { etat: Extract<EtatGeneration, { phase: 'terminee' 
 }
 
 /** Avancement d'une génération : état, durée, aperçu au fil de l'eau, puis lien vers l'analyse enregistrée. */
-export function SuiviGeneration({ etat, onDetacher }: { etat: EtatGeneration; onDetacher: () => void }) {
+export function SuiviGeneration({ etat }: { etat: EtatGeneration }) {
   switch (etat.phase) {
     case 'repos':
       return null
     case 'en_cours':
-      return <EnCours etat={etat} onDetacher={onDetacher} />
+      return <EnCours etat={etat} />
     case 'terminee':
       return <Terminee etat={etat} />
-    case 'detachee':
-      return (
-        <p role="status" className="text-[0.84rem] leading-snug">
-          Vous ne suivez plus l'affichage. La génération continue sur le serveur et l'analyse sera enregistrée :
-          actualisez la liste dans quelques minutes.
-        </p>
-      )
     case 'erreur':
       return (
         <>

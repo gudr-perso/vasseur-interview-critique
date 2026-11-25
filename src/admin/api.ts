@@ -57,7 +57,7 @@ export interface DemandeAnalyse {
 }
 
 const COUPURE_FLUX =
-  "Connexion interrompue pendant la génération. L'analyse continue sans doute côté serveur : actualisez la liste dans quelques minutes."
+  "Connexion interrompue pendant la génération : l'analyse n'a sans doute pas été enregistrée. Actualisez la liste pour vérifier, sinon relancez-la."
 
 /**
  * Lance une analyse et en suit le flux. `surTexte` reçoit le texte cumulé à chaque morceau.

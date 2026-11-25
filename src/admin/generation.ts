@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import type { AnalyseResume } from '../../shared/analyses'
 import { api, type DemandeAnalyse, type FiltreAnalyses } from './api'
 import { messageErreur } from './commun'
 
@@ -8,8 +9,9 @@ export type EtatGeneration =
   /** `recherche` : l'analyse enregistrée est en cours de recherche ; `analyseId` reste nul si elle tarde. */
   | { phase: 'terminee'; texte: string; nb_entretiens: number; recherche: boolean; analyseId: string | null }
   | { phase: 'erreur'; texte: string; message: string }
-  /** Suivi arrêté à la demande : la génération continue côté serveur. */
-  | { phase: 'detachee'; texte: string }
+
+/** Montré pendant une génération, et posé en question avant de quitter la page. */
+export const AVERTISSEMENT_SORTIE = "Gardez cette page ouverte jusqu'à la fin : une analyse interrompue n'est pas enregistrée."
 
 /** Intervalle minimal entre deux rendus de l'aperçu : le Markdown est remis en forme en entier à chaque fois. */
 const INTERVALLE_RENDU_MS = 100
@@ -22,12 +24,23 @@ function filtreDe(demande: DemandeAnalyse): FiltreAnalyses {
   return { type: demande.type, questionnaire_id: demande.questionnaire_id, repondant_id: demande.repondant_id }
 }
 
-/** Identifiant de l'analyse apparue depuis le début de la génération, ou `null` si elle tarde trop. */
+/** Même type et exactement la même portée (le filtre du serveur ne distingue pas « projet entier »). */
+function memePortee(a: AnalyseResume, filtre: FiltreAnalyses): boolean {
+  return a.type === filtre.type
+    && a.questionnaire_id === (filtre.questionnaire_id ?? null)
+    && a.repondant_id === (filtre.repondant_id ?? null)
+}
+
+/**
+ * Le flux ne donne pas l'identifiant de l'analyse enregistrée : c'est la plus récente de ce type et de cette
+ * portée, apparue depuis le lancement. `null` si elle tarde trop.
+ */
 async function trouverEnregistree(projetId: string, filtre: FiltreAnalyses, connues: Set<string>): Promise<string | null> {
   for (const ms of ATTENTES_ENREGISTREMENT_MS) {
     await attendre(ms)
     const liste = await api.analyses.lister(projetId, filtre).catch(() => [])
-    const nouvelle = liste.find(a => !connues.has(a.id))
+    // La liste est triée de la plus récente à la plus ancienne.
+    const nouvelle = liste.find(a => memePortee(a, filtre) && !connues.has(a.id))
     if (nouvelle) return nouvelle.id
   }
   return null
@@ -69,7 +82,10 @@ function useRenduRegroupe(appliquer: (texte: string, nb: number) => void) {
   return { pousser, annuler }
 }
 
-/** Lance une génération et en suit l'avancement ; quitter l'écran arrête seulement le suivi. */
+/**
+ * Lance une génération et en suit l'avancement. Quitter l'écran coupe la connexion : le serveur ne prolonge
+ * alors le travail que brièvement, et une analyse interrompue n'est pas enregistrée.
+ */
 export function useGenerationAnalyse(projetId: string, onEnregistree: () => void) {
   const [etat, setEtat] = useState<EtatGeneration>({ phase: 'repos' })
   const controleur = useRef<AbortController | null>(null)
@@ -109,12 +125,5 @@ export function useGenerationAnalyse(projetId: string, onEnregistree: () => void
     }
   }
 
-  /** Arrête de suivre l'affichage ; le serveur termine et enregistre l'analyse. */
-  const detacher = () => {
-    controleur.current?.abort()
-    annuler()
-    setEtat(actuel => ({ phase: 'detachee', texte: 'texte' in actuel ? actuel.texte : '' }))
-  }
-
-  return { etat, lancer, detacher }
+  return { etat, lancer }
 }

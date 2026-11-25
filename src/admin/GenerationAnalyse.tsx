@@ -6,7 +6,7 @@ import { useCatalogue } from '../lib/modeles'
 import { api, type DemandeAnalyse } from './api'
 import { CLASSE_AIDE, ChampCase, ChampListe } from './champs'
 import { Alerte, ErreurChargement, useChargement } from './commun'
-import { useGenerationAnalyse } from './generation'
+import { AVERTISSEMENT_SORTIE, useGenerationAnalyse } from './generation'
 import { libelle, libelleSource, LIBELLES_STATUT_REPONDANT, LIBELLES_TYPE_ANALYSE, optionsDe } from './libelles'
 import { useSaisieNonEnregistree } from './saisies'
 import { SuiviGeneration } from './SuiviGeneration'
@@ -32,7 +32,6 @@ interface Choix {
 }
 
 const OPTIONS_TYPE = optionsDe(TYPES_ANALYSE, LIBELLES_TYPE_ANALYSE)
-const AVERTISSEMENT_SORTIE = "L'analyse continue d'être produite et sera enregistrée même si vous quittez la page."
 
 function demandeDe(choix: Choix): DemandeAnalyse | { erreur: string } {
   if (choix.type === 'fiche_repondant') {
@@ -118,7 +117,7 @@ export function GenerationAnalyse({ projet, preReglage, onEnregistree, onFermer 
     ? { type: 'fiche_repondant', questionnaireId: preReglage.questionnaire_id, repondantId: preReglage.repondant_id, inclureEnCours: false }
     : { type: 'synthese', questionnaireId: '', repondantId: '', inclureEnCours: false }))
   const [erreurSaisie, setErreurSaisie] = useState('')
-  const { etat, lancer, detacher } = useGenerationAnalyse(projet.id, () => onEnregistree?.())
+  const { etat, lancer } = useGenerationAnalyse(projet.id, () => onEnregistree?.())
   const enCours = etat.phase === 'en_cours'
   useSaisieNonEnregistree(enCours, AVERTISSEMENT_SORTIE)
   const { modeles } = useCatalogue()
@@ -151,7 +150,7 @@ export function GenerationAnalyse({ projet, preReglage, onEnregistree, onFermer 
         <Alerte className="mt-3">{erreurSaisie}</Alerte>
       </form>
       <div className="mt-4">
-        <SuiviGeneration etat={etat} onDetacher={detacher} />
+        <SuiviGeneration etat={etat} />
       </div>
     </div>
   )
