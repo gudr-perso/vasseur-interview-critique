@@ -1,6 +1,7 @@
 import { z } from '../zod'
 import { ErreurMetier } from '../erreurs'
 import { ETAPES_GUIDE, lireGuide } from '../guides'
+import { caracteres } from '../texte'
 import { enregistrerLogiciel, lireLogiciel, listerLogiciels } from '../services/logiciels'
 import {
   STATUTS_PROJET, TYPES_DEMANDE, ajouterDocument, creerProjet, lireDocument, lireProjet, listerProjets, modifierProjet,
@@ -39,9 +40,6 @@ function outil<S extends z.ZodObject>(definition: {
 }
 
 const TAILLE_MORCEAU_MAX = 20_000
-
-/** Un texte en caractères entiers : une émoticône compte pour un, pas pour deux. */
-const caracteres = (texte: string): string[] => Array.from(texte)
 
 const idProjet = z.string().describe('Identifiant du projet, tel que renvoyé par creer_projet ou lister_projets')
 const idQuestionnaire = z.string().describe('Identifiant du questionnaire')
