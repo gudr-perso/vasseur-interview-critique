@@ -3,3 +3,8 @@
 # Ne jamais committer .dev.vars (il est dans .gitignore)
 
 ANTHROPIC_API_KEY=sk-ant-votre-cle-ici
+
+# Mot de passe de l'espace admin et de l'interview critique
+ADMIN_PASSWORD=choisissez-un-mot-de-passe
+# Secret de signature des sessions : 32 caractères aléatoires ou plus
+SESSION_SECRET=remplacez-par-une-longue-chaine-aleatoire

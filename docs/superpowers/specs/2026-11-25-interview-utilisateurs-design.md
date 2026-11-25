@@ -121,13 +121,14 @@ Objectif : faire dans Claude (claude.ai, Claude Desktop, Claude Code) le cadrage
 ## 7. Architecture technique
 
 ```
+shared/              types et constantes communs navigateur / serveur
+server/
+  db.ts              accès D1
+  services/          logiciels, projets, questionnaires, repondants, analyses
+  ia/                client Anthropic, consignes (guides), cadrage, relance, entretien, analyse
+  auth.ts            session admin, contrôle du jeton MCP
+  modeles.ts         catalogue des modèles
 functions/
-  _lib/
-    db.ts            accès D1
-    services/        logiciels, projets, questionnaires, repondants, analyses
-    ia/              client Anthropic, consignes (guides), cadrage, relance, entretien, analyse
-    auth.ts          session admin, contrôle du jeton MCP
-    modeles.ts       catalogue des modèles
   api/
     messages.ts      proxy existant, désormais réservé à la session admin
     admin/…          login, logiciels, projets, cadrage, questionnaires, repondants, analyses, modeles
@@ -139,6 +140,8 @@ src/
   repondant/         écrans répondant
   screens/           interview critique existante (inchangée hors sélecteur de modèle)
 ```
+
+Le code partagé est hors de `functions/` pour qu'aucun de ses fichiers ne devienne une route.
 
 - **Routage** : ajout de React Router. `/` interview critique, `/admin/*`, `/q/:code`, `/r/:jeton`. La navigation interne de l'interview critique par le store reste telle quelle.
 - **Session admin** : `POST /api/admin/login` compare le mot de passe (`ADMIN_PASSWORD`) en temps constant et pose un cookie `HttpOnly`, `Secure`, `SameSite=Lax`, signé avec `SESSION_SECRET`, valable 30 jours. Toutes les routes `/api/admin/*` et `/api/messages` l'exigent.
