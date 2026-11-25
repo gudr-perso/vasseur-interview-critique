@@ -23,7 +23,7 @@ export interface Morceau {
   suite: number | null
 }
 
-interface LigneRepondant {
+export interface LigneRepondant {
   id: string
   questionnaire_id: string
   poste: string
@@ -34,7 +34,7 @@ interface LigneRepondant {
   contenu: string
 }
 
-interface LigneTour {
+export interface LigneTour {
   repondant_id: string
   type: 'question' | 'relance'
   question_id: string | null
@@ -48,7 +48,7 @@ function dateFrancaise(iso: string): string {
   return `${jour}/${mois}/${annee}`
 }
 
-function titreEntretien(pseudonyme: string, poste: string, entreprise: string): string {
+export function titreEntretien(pseudonyme: string, poste: string, entreprise: string): string {
   const detail = [poste, entreprise].filter(Boolean).join(', ')
   return detail ? `## ${pseudonyme} — ${detail}` : `## ${pseudonyme}`
 }
@@ -58,13 +58,20 @@ function objectifs(contenuJson: string): Map<string, string> {
   return new Map((contenu.questions ?? []).map(q => [q.id, q.objectif]))
 }
 
-function rendreEntretien(repondant: LigneRepondant, pseudonyme: string, tours: LigneTour[]): string {
-  const objectifParQuestion = objectifs(repondant.contenu)
+/**
+ * Un entretien en Markdown. `titre` est la ligne de titre déjà composée (`## …`) : pseudonyme pour l'IA, vrai nom pour l'admin.
+ * `avecObjectifs` : l'analyse reçoit l'objectif de chaque question, pas la lecture ni l'export.
+ */
+export function rendreEntretien(
+  repondant: Pick<LigneRepondant, 'statut' | 'termine_le' | 'public_vise' | 'contenu'>,
+  titre: string, tours: LigneTour[], avecObjectifs = true,
+): string {
+  const objectifParQuestion = avecObjectifs ? objectifs(repondant.contenu) : new Map<string, string>()
   const etat = repondant.statut === 'termine' && repondant.termine_le
     ? `terminé le ${dateFrancaise(repondant.termine_le)}`
     : 'entretien inachevé'
   const lignes = [
-    titreEntretien(pseudonyme, repondant.poste, repondant.entreprise),
+    titre,
     `Questionnaire : ${repondant.public_vise} · ${etat}`,
     '',
   ]
@@ -134,7 +141,7 @@ export async function construireCorpus(db: D1Database, portee: PorteeAnalyse): P
   }
 
   return {
-    texte: retenus.map(r => rendreEntretien(r, pseudonymes.get(r.id)!, toursParRepondant.get(r.id) ?? [])).join('\n'),
+    texte: retenus.map(r => rendreEntretien(r, titreEntretien(pseudonymes.get(r.id)!, r.poste, r.entreprise), toursParRepondant.get(r.id) ?? [])).join('\n'),
     nb_entretiens: retenus.length,
     repondants: retenus.map(r => ({ id: r.id, pseudonyme: pseudonymes.get(r.id)! })),
   }
