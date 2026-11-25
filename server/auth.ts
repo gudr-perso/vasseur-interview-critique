@@ -51,6 +51,13 @@ export async function motDePasseValide(secret: string, saisi: string, attendu: s
   return egalEnTempsConstant(a, b)
 }
 
+/** Compare deux secrets sans fuite de durée. Deux chaînes vides ne sont jamais égales. */
+export async function chainesEgales(a: string, b: string): Promise<boolean> {
+  if (!a || !b) return false
+  const [x, y] = await Promise.all([hmacHex('comparaison', a), hmacHex('comparaison', b)])
+  return egalEnTempsConstant(x, y)
+}
+
 export function lireCookie(requete: Request, nom: string): string | null {
   const enTete = requete.headers.get('Cookie')
   if (!enTete) return null

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  DUREE_SESSION_S, NOM_COOKIE, creerSession, enTeteCookie, exigerAdmin,
+  DUREE_SESSION_S, NOM_COOKIE, chainesEgales, creerSession, enTeteCookie, exigerAdmin,
   lireCookie, motDePasseValide, sessionValide,
 } from '../../server/auth'
 
@@ -98,5 +98,14 @@ describe('exigerAdmin', () => {
     const session = await creerSession(SECRET, 'ancien', T0)
     const refus = await exigerAdmin(requete(`${NOM_COOKIE}=${session}`), env, T0)
     expect(refus?.status).toBe(401)
+  })
+})
+
+describe('chainesEgales', () => {
+  it('ne reconnaît que deux chaînes identiques et non vides', async () => {
+    expect(await chainesEgales('jeton-abc', 'jeton-abc')).toBe(true)
+    expect(await chainesEgales('jeton-abc', 'jeton-abd')).toBe(false)
+    expect(await chainesEgales('jeton', 'jeton-abc')).toBe(false)
+    expect(await chainesEgales('', '')).toBe(false)
   })
 })
