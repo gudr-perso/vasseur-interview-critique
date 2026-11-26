@@ -51,9 +51,9 @@ describe('coutsGlobaux', () => {
   it('cumule par projet et par poste, du plus cher au moins cher, projet supprimé compris', async () => {
     const c = await coutsGlobaux(base.db, {})
     expect(c.projets).toEqual([
-      { projet_id: b, titre: 'B', cadrage: 0, interview: 0, analyse: 2000, total: 2000 },
-      { projet_id: supprime, titre: 'Projet supprimé', cadrage: 0, interview: 0, analyse: 1000, total: 1000 },
-      { projet_id: a, titre: 'A', cadrage: 200 + 5000, interview: 200, analyse: 0, total: 5400 },
+      { projet_id: b, titre: 'B', supprime: false, cadrage: 0, interview: 0, analyse: 2000, total: 2000 },
+      { projet_id: supprime, titre: 'Projet supprimé', supprime: true, cadrage: 0, interview: 0, analyse: 1000, total: 1000 },
+      { projet_id: a, titre: 'A', supprime: false, cadrage: 200 + 5000, interview: 200, analyse: 0, total: 5400 },
     ].sort((x, y) => y.total - x.total))
     expect(c.hors_projet).toBe(20)
     expect(c.total).toBe(5400 + 2000 + 1000 + 20)

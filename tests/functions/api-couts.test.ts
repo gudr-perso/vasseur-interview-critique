@@ -40,7 +40,7 @@ describe('GET /api/admin/couts', () => {
     expect(donnees).toEqual({
       total: 200 + 100 + 20,
       hors_projet: 20,
-      projets: [{ projet_id: projet, titre: 'Saisie des temps', cadrage: 200, interview: 0, analyse: 100, total: 300 }],
+      projets: [{ projet_id: projet, titre: 'Saisie des temps', supprime: false, cadrage: 200, interview: 0, analyse: 100, total: 300 }],
       tarifs_manquants: ['modele-inconnu'],
     })
   })

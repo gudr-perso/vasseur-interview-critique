@@ -4,6 +4,8 @@ export interface CoutProjetLigne {
   projet_id: string
   /** Titre actuel du projet, « Projet supprimé » s'il n'existe plus. */
   titre: string
+  /** Le projet n'existe plus : sa dépense reste comptée, sans lien vers sa fiche. */
+  supprime: boolean
   cadrage: number
   interview: number
   analyse: number

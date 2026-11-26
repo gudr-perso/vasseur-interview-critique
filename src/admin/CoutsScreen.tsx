@@ -10,10 +10,10 @@ import { dollars } from './montants'
 
 type Periode = 'mois' | 'debut'
 
-/** Premier jour du mois courant, `AAAA-MM-01`. */
+/** Premier jour du mois courant, `AAAA-MM-01`, en UTC comme les dates enregistrées. */
 function debutDuMois(): string {
   const maintenant = new Date()
-  return `${maintenant.getFullYear()}-${String(maintenant.getMonth() + 1).padStart(2, '0')}-01`
+  return `${maintenant.getUTCFullYear()}-${String(maintenant.getUTCMonth() + 1).padStart(2, '0')}-01`
 }
 
 /** « 2026-11-26 » → « 26/11/2026 ». */
@@ -42,7 +42,7 @@ function Tableau({ couts }: { couts: CoutsGlobaux }) {
           {couts.projets.map(p => (
             <tr key={p.projet_id} className="border-b border-border">
               <th scope="row" className="px-3 py-2 text-left font-normal break-words min-w-0">
-                {p.titre === 'Projet supprimé'
+                {p.supprime
                   ? <span className="text-muted">{p.titre}</span>
                   : <Link to={`/admin/projets/${p.projet_id}`} className="text-red underline">{p.titre}</Link>}
               </th>

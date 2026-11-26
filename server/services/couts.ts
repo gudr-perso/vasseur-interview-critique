@@ -55,7 +55,7 @@ export async function coutsGlobaux(db: D1Database, options: { depuis?: string } 
     }
     let projet = parProjet.get(ligne.projet_id)
     if (!projet) {
-      projet = { projet_id: ligne.projet_id, titre: ligne.titre ?? 'Projet supprimé', cadrage: 0, interview: 0, analyse: 0, total: 0 }
+      projet = { projet_id: ligne.projet_id, titre: ligne.titre ?? 'Projet supprimé', supprime: ligne.titre === null, cadrage: 0, interview: 0, analyse: 0, total: 0 }
       parProjet.set(ligne.projet_id, projet)
     }
     if (ligne.poste === 'cadrage' || ligne.poste === 'interview' || ligne.poste === 'analyse') projet[ligne.poste] += ligne.cout
