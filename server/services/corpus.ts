@@ -271,7 +271,7 @@ export function decouper(texte: string, debut: number, longueur: number): Morcea
   return { texte: lettres.slice(debut, fin).join(''), debut, taille, suite: fin < taille ? fin : null }
 }
 
-const TYPES_DEMANDE_LIBELLES: Record<TypeDemande, string> = {
+export const TYPES_DEMANDE_LIBELLES: Record<TypeDemande, string> = {
   evolution_simple: 'évolution simple',
   amelioration: 'amélioration',
   nouvelle_fonctionnalite: 'nouvelle fonctionnalité',

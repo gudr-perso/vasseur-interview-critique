@@ -19,6 +19,8 @@ export const LIMITES = {
   question_ouverture: 500,
   titre_theme: 200,
   modele: 100,
+  message_cadrage_admin: 4_000,
+  message_cadrage_ia: 2_000,
 } as const
 
 export interface Logiciel {
