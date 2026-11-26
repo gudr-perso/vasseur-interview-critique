@@ -128,6 +128,16 @@ describe('POST …/questionnaires/publics', () => {
     expect(await questionnairesDu(id)).toHaveLength(1)
   })
 
+  it('écarte les propositions dont le public est fait d\'espaces, et refuse une liste devenue vide', async () => {
+    const bon = { public_vise: '  Gérants ', mode: 'hybride', justification: ' Ils valident les temps. ' }
+    const vide = { public_vise: ' ​ ', mode: 'entretien', justification: 'Sans public.' }
+    const { flux } = await lancer<SuccesPublics>(repondrePublics, await nouveauProjet(), apiSimulee(() => reponseJson({ publics: [vide, bon] })), {})
+    expect(flux!.fin).toEqual({ type: 'succes', publics: [{ public_vise: 'Gérants', mode: 'hybride', justification: 'Ils valident les temps.' }] })
+
+    const seul = await lancer(repondrePublics, await nouveauProjet(), apiSimulee(() => reponseJson({ publics: [vide, { ...vide, public_vise: '   ' }] })), {})
+    expect(seul.flux!.fin).toEqual({ type: 'erreur', message: "L'IA n'a proposé aucun public exploitable. Relancez la proposition." })
+  })
+
   it('refuse plus de 6 propositions ou une proposition sans justification', async () => {
     const un = { public_vise: 'Comptables', mode: 'hybride', justification: 'x' }
     for (const sortie of [{ publics: Array(7).fill(un) }, { publics: [{ ...un, justification: '' }] }, { publics: [] }]) {
@@ -223,6 +233,17 @@ describe('POST …/questionnaires/generer', () => {
     expect(flux!.fin.type).toBe('succes')
     expect(api.lus()[1].messages[2].content).toContain('contenu.questions.1.options')
     expect(await questionnairesDu(id)).toHaveLength(1)
+  })
+
+  it("renvoie au modèle une introduction faite d'espaces, puis crée le brouillon corrigé", async () => {
+    const id = await nouveauProjet()
+    const api = apiSimulee(() => reponseJson({ ...hybrideValide, introduction: '  \n ' }), () => reponseJson(hybrideValide))
+    const { flux } = await lancer<SuccesGeneration>(repondreGeneration, id, api, { public_vise: 'Comptables', mode: 'hybride' })
+    expect(flux!.fin.type).toBe('succes')
+    expect(api.lus()[1].messages[2].content).toContain("Le serveur a refusé ce questionnaire : L'introduction est vide")
+    const crees = await questionnairesDu(id)
+    expect(crees).toHaveLength(1)
+    expect((await lireQuestionnaire(base.db, crees[0].id)).introduction).toBe(hybrideValide.introduction)
   })
 
   it("après deux sorties invalides, répond par une ligne d'erreur et ne crée aucun brouillon", async () => {

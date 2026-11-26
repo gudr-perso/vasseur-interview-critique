@@ -6,7 +6,7 @@ import { api } from './api'
 import { ApercuMarkdown } from './ApercuMarkdown'
 import { useAppelFlux, type EtatAppel } from './appelFlux'
 import { CadrageIa, RappelModele } from './CadrageIa'
-import { ChampZone, CLASSE_AIDE, CLASSE_LIBELLE } from './champs'
+import { bornerTexte, ChampZone, CLASSE_AIDE, CLASSE_LIBELLE } from './champs'
 import { Alerte, useAction } from './commun'
 import { AppelEnCours, ContexteTronque } from './EtatAppel'
 import { nombre } from './libelles'
@@ -41,14 +41,14 @@ const AVERTISSEMENT_REDACTION = "Gardez cette page ouverte jusqu'à la fin de la
 
 type EtatRedaction = EtatAppel<EnteteCadrage, SuccesTexteCadrage>
 
-/** Coupe un texte trop long pour la zone (le navigateur ne coupe que la frappe), sans couper un caractère en deux. */
-function borner(texte: string, max: number): string {
-  if (texte.length <= max) return texte
-  const coupe = texte.slice(0, max)
-  return /[\uD800-\uDBFF]$/.test(coupe) ? coupe.slice(0, -1) : coupe
+interface SuiviProps {
+  etat: EtatRedaction
+  champ: ChampCadrage
+  /** Le texte de l'IA dépassait la longueur de la zone : il a été coupé. */
+  coupe: boolean
 }
 
-function SuiviRedaction({ etat, champ }: { etat: EtatRedaction; champ: ChampCadrage }) {
+function SuiviRedaction({ etat, champ, coupe }: SuiviProps) {
   const textes = REDACTIONS[champ]
   switch (etat.phase) {
     case 'repos':
@@ -70,6 +70,12 @@ function SuiviRedaction({ etat, champ }: { etat: EtatRedaction; champ: ChampCadr
           {etat.succes.tronquee && (
             <p className="text-[0.76rem] text-warn-fg mt-1 leading-snug">Longueur maximale atteinte : le texte s'arrête en cours de route.</p>
           )}
+          {coupe && (
+            <p className="text-[0.76rem] text-warn-fg mt-1 leading-snug">
+              Le texte de l'IA dépassait {nombre(LIMITES[champ])} caractères, la longueur maximale de la zone : il a été coupé à
+              cette longueur. Relisez la fin et raccourcissez-le si besoin.
+            </p>
+          )}
           <ContexteTronque tronque={etat.entete.contexte_tronque} />
         </div>
       )
@@ -86,6 +92,8 @@ function SuiviRedaction({ etat, champ }: { etat: EtatRedaction; champ: ChampCadr
 export function ProjetCadrage({ projet, onMaj }: { projet: ProjetFiche; onMaj: (projet: ProjetFiche) => void }) {
   const [saisie, setSaisie] = useState<Partial<Cadrage>>({})
   const [apercu, setApercu] = useState(false)
+  /** Champs dont le texte rédigé par l'IA a dû être coupé à la longueur de la zone. */
+  const [coupes, setCoupes] = useState<Partial<Record<ChampCadrage, boolean>>>({})
   const action = useAction()
   const note = useAppelFlux<EnteteCadrage, SuccesTexteCadrage>()
   const resume = useAppelFlux<EnteteCadrage, SuccesTexteCadrage>()
@@ -112,6 +120,7 @@ export function ProjetCadrage({ projet, onMaj }: { projet: ProjetFiche; onMaj: (
       onMaj(await api.projets.modifier(projet.id, modifs))
       // Les champs sont désactivés pendant l'appel : rien n'a pu être tapé entre-temps.
       setSaisie({})
+      setCoupes({})
       note.effacer()
       resume.effacer()
     })
@@ -122,9 +131,11 @@ export function ProjetCadrage({ projet, onMaj }: { projet: ProjetFiche; onMaj: (
     if (valeurs[champ].trim() && !window.confirm(REDACTIONS[champ].remplacer)) return
     const appel = champ === 'note_cadrage' ? note : resume
     const demander = champ === 'note_cadrage' ? api.cadrage.note : api.cadrage.resume
+    setCoupes(actuels => ({ ...actuels, [champ]: false }))
     const fin = await appel.lancer((surTexte, signal) => demander(projet.id, surTexte, signal))
     if (fin?.phase !== 'terminee') return
-    const texte = borner(fin.texte, LIMITES[champ])
+    const { texte, coupe } = bornerTexte(fin.texte, LIMITES[champ])
+    setCoupes(actuels => ({ ...actuels, [champ]: coupe }))
     changer(champ === 'note_cadrage' ? { note_cadrage: texte } : { resume_contexte: texte })
   }
 
@@ -134,7 +145,7 @@ export function ProjetCadrage({ projet, onMaj }: { projet: ProjetFiche; onMaj: (
         projetId={projet.id} modele={projet.modele_cadrage} noteEnCours={note.enCours}
         onRedigerNote={() => void rediger('note_cadrage')}
       />
-      <SuiviRedaction etat={note.etat} champ="note_cadrage" />
+      <SuiviRedaction etat={note.etat} champ="note_cadrage" coupe={coupes.note_cadrage ?? false} />
       <div className="flex gap-0 mb-3" role="group" aria-label="Affichage de la note">
         <Bascule active={!apercu} onClick={() => setApercu(false)}>Éditer</Bascule>
         <Bascule active={apercu} onClick={() => setApercu(true)}>Aperçu</Bascule>
@@ -159,7 +170,7 @@ export function ProjetCadrage({ projet, onMaj }: { projet: ProjetFiche; onMaj: (
         onChange={resume_contexte => changer({ resume_contexte })} maxLength={LIMITES.resume_contexte}
         aide="Utilisé à chaque entretien à la place des documents complets" disabled={resume.enCours}
       />
-      <SuiviRedaction etat={resume.etat} champ="resume_contexte" />
+      <SuiviRedaction etat={resume.etat} champ="resume_contexte" coupe={coupes.resume_contexte ?? false} />
       <div className="mb-4">
         <Button type="button" size="sm" onClick={() => void rediger('resume_contexte')} disabled={redige} loading={resume.enCours}>
           Générer le résumé de contexte

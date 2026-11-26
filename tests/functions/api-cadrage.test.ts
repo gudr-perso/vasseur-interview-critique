@@ -67,7 +67,10 @@ describe('consigne du cadrage', () => {
     for (const repere of ['une seule question à la fois', 'Ne redemande jamais', 'Points encore ouverts']) expect(consigne).toContain(repere)
     // La méthode est celle que lit Claude via le MCP, mot pour mot.
     expect(lireGuide('cadrage').startsWith(consigne.slice(0, consigne.indexOf(SECTION_ADMIN)).trimEnd())).toBe(true)
-    for (const repere of ['une seule question à la fois', "N'écris pas la note pendant le dialogue", 'document tronqué', 'sans préambule']) {
+    for (const repere of [
+      'une seule question à la fois', 'Une question double reçoit en général une réponse à moitié', "garde l'autre pour le tour suivant",
+      "N'écris pas la note pendant le dialogue", 'document tronqué', 'sans préambule',
+    ]) {
       expect(SECTION_ADMIN).toContain(repere)
     }
   })

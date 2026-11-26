@@ -82,6 +82,23 @@ export function schemaQuestionnaireGenere(mode: Mode) {
   })
 }
 
+export const AUCUN_PUBLIC = "L'IA n'a proposé aucun public exploitable. Relancez la proposition."
+
+/**
+ * Propositions nettoyées : un public fait d'espaces passe le schéma (au moins un caractère) mais ne désigne personne,
+ * et le client refuserait toute la liste ; il est écarté. Une liste devenue vide est refusée.
+ */
+export function publicsRetenus(publics: z.infer<typeof schemaPublics>['publics']) {
+  const retenus = publics
+    .filter(p => !estInvisible(p.public_vise))
+    .map(p => ({ ...p, public_vise: p.public_vise.trim(), justification: p.justification.trim() }))
+  if (retenus.length === 0) throw new ErreurIa(AUCUN_PUBLIC)
+  return retenus
+}
+
+/** Refus à renvoyer au modèle pour une introduction faite d'espaces (le premier écran du répondant serait vide). */
+export const INTRODUCTION_VIDE = "L'introduction est vide : écris le premier écran que voit le répondant."
+
 // ─── Messages ────────────────────────────────────────────────────────────────
 
 function listeExistants(questionnaires: QuestionnaireResume[]): string {
@@ -162,7 +179,7 @@ export async function repondrePublics(contexte: Contexte, options: OptionsAppelI
     reglages: options.reglages,
     produire: async (): Promise<SuccesPublics> => {
       const { sortie } = await genererStructure(demande, schemaPublics)
-      return { publics: sortie.publics.map(p => ({ ...p, public_vise: p.public_vise.trim(), justification: p.justification.trim() })) }
+      return { publics: publicsRetenus(sortie.publics) }
     },
   })
 }
@@ -212,6 +229,7 @@ export async function repondreGeneration(contexte: Contexte, options: OptionsApp
           if (e instanceof ErreurSortie) return { brut: e.brut, erreur: e.detail }
           throw e
         }
+        if (estInvisible(resultat.sortie.introduction)) return { brut: resultat.brut, erreur: INTRODUCTION_VIDE }
         let contenu: ReturnType<typeof validerContenu>
         try {
           contenu = validerContenu(saisie.mode, resultat.sortie.contenu)

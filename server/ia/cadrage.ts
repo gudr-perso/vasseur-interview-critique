@@ -40,7 +40,7 @@ Ici, tu n'as aucun outil : le contexte du projet (description, logiciels et leur
 
 Pendant le dialogue :
 
-- Pose une seule question à la fois, en quelques phrases au plus, et ne redemande rien de ce que disent déjà le contexte ou les réponses précédentes.
+- Pose une seule question à la fois, en quelques phrases au plus, et ne redemande rien de ce que disent déjà le contexte ou les réponses précédentes. Une seule question veut dire un seul point à éclaircir par message : n'ajoute pas une seconde question après la première, même courte. Une question double reçoit en général une réponse à moitié : la personne répond à la partie qui lui parle le plus et l'autre se perd sans que personne s'en aperçoive. S'il te manque deux informations, demande la plus importante et garde l'autre pour le tour suivant.
 - Quand tu as assez d'éléments pour écrire la note, ou dès que la personne dit que cela suffit, ne pose plus de question : dis-le en une phrase, et le dialogue s'arrête là. Le serveur arrête aussi le dialogue quand le plafond de questions est atteint ; le nombre de questions déjà posées t'est rappelé à chaque tour.
 - N'écris pas la note pendant le dialogue : elle est demandée à part, une fois le dialogue terminé.
 - Si un document du contexte porte la mention « document tronqué », dis-le dans ton premier message : seul son début t'a été transmis.
@@ -79,7 +79,7 @@ export function rappelTour(posees: number, plafond: number, typeDemande: keyof t
   return [
     `Questions déjà posées : ${posees} sur ${plafond} au plus pour une ${TYPES_DEMANDE_LIBELLES[typeDemande]}.`,
     reste === 1 ? "Il ne t'en reste qu'une : pose la plus utile, ou conclus." : '',
-    'Donne la suite du dialogue : fin à false et la question suivante dans message, ou fin à true et, dans message, la phrase qui dit que le cadrage peut être conclu.',
+    'Donne la suite du dialogue : fin à false et, dans message, la question suivante (une seule), ou fin à true et, dans message, la phrase qui dit que le cadrage peut être conclu.',
   ].filter(Boolean).join(' ')
 }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { etatLongueur } from '../../src/admin/champs'
+import { bornerTexte, etatLongueur } from '../../src/admin/champs'
 import { nombre } from '../../src/admin/libelles'
 
 describe('etatLongueur', () => {
@@ -13,5 +13,17 @@ describe('etatLongueur', () => {
 
   it('signale la limite atteinte', () => {
     expect(etatLongueur(1000, 1000)).toEqual({ compteur: `${nombre(1000)} / ${nombre(1000)}`, atteinte: true })
+  })
+})
+
+describe('bornerTexte', () => {
+  it('laisse un texte qui tient, et coupe un texte trop long en le signalant', () => {
+    expect(bornerTexte('abc', 3)).toEqual({ texte: 'abc', coupe: false })
+    expect(bornerTexte('abcd', 3)).toEqual({ texte: 'abc', coupe: true })
+  })
+
+  it('ne coupe jamais une émoticône en deux', () => {
+    expect(bornerTexte('ab😀', 3)).toEqual({ texte: 'ab', coupe: true })
+    expect(bornerTexte('a😀b', 3)).toEqual({ texte: 'a😀', coupe: true })
   })
 })

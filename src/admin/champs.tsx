@@ -87,6 +87,16 @@ interface ChampZoneProps extends ChampCommun {
 const SEUIL_COMPTEUR = 0.8
 
 /** Compteur « n / max » à afficher (dès 80 % de la limite), et si la limite est atteinte. */
+/**
+ * Coupe un texte trop long pour une zone (le navigateur ne coupe que la frappe, pas une valeur posée par le code),
+ * sans couper un caractère en deux. `coupe` dit s'il a fallu couper : c'est à signaler, jamais à taire.
+ */
+export function bornerTexte(texte: string, max: number): { texte: string; coupe: boolean } {
+  if (texte.length <= max) return { texte, coupe: false }
+  const debut = texte.slice(0, max)
+  return { texte: /[\uD800-\uDBFF]$/.test(debut) ? debut.slice(0, -1) : debut, coupe: true }
+}
+
 export function etatLongueur(longueur: number, max: number): { compteur: string | null; atteinte: boolean } {
   if (longueur < max * SEUIL_COMPTEUR) return { compteur: null, atteinte: false }
   return { compteur: `${nombre(longueur)} / ${nombre(max)}`, atteinte: longueur >= max }

@@ -23,6 +23,13 @@ describe('guides', () => {
     }
   })
 
+  it("le guide de questionnaire dit, dans la méthode, qu'un objectif ne cite ni hypothèse de l'équipe ni personne, et pourquoi", () => {
+    const methode = consigneSansOutils('questionnaire')
+    for (const repere of ["non comme une hypothèse de l'équipe", 'sans nommer personne', "l'objectif d'un thème", 'décider de ses relances']) {
+      expect(methode, repere).toContain(repere)
+    }
+  })
+
   it('les guides de cadrage et de questionnaire disent de lire les documents utiles avec lire_document', () => {
     for (const etape of ['cadrage', 'questionnaire'] as const) expect(lireGuide(etape), etape).toContain('lire_document')
   })

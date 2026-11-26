@@ -89,6 +89,8 @@ Un libellé et un objectif font 500 caractères au plus ; une option, 200 caract
 
 Le champ objectif est obligatoire et n'est jamais montré au répondant : il dit ce qu'on cherche à apprendre, et c'est d'après lui que l'IA jugera si une réponse mérite une relance. Écris-le précisément.
 
+Formule l'objectif comme ce qu'on veut apprendre du répondant, et non comme une hypothèse de l'équipe à confirmer, sans nommer personne ; cela vaut aussi pour l'objectif d'un thème en mode entretien. L'IA d'entretien lit l'objectif pour décider de ses relances : s'il reprend une hypothèse de la note de cadrage, elle relance jusqu'à l'entendre confirmée et oriente les réponses ; s'il nomme quelqu'un, ce nom peut ressortir dans la conversation avec un répondant qui n'avait pas à le connaître.
+
 ## Format du contenu en mode entretien
 
 {
