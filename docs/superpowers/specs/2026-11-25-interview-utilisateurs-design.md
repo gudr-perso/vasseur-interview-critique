@@ -41,6 +41,17 @@ Hors périmètre : gestion de comptes utilisateurs, envoi de mails d'invitation 
 5. **Exports.** CSV pour un tableur (point-virgule, UTF-8 avec BOM), une ligne par question posée ; Markdown lisible, un entretien par section, avec les vrais noms. Par questionnaire et par projet entier.
 6. **Historique.** Chaque analyse est conservée avec sa date, sa source (`mcp` ou le modèle utilisé) et le nombre d'entretiens couverts. Rien n'est écrasé ; l'admin peut supprimer une analyse.
 
+### Décisions du lot 6 (coût de l'IA)
+
+1. **Trois postes par projet** (cadrage, interview, analyse) et un poste hors projet (interview critique) ; pas de détail par appel à l'écran.
+2. **Ce qu'on garde** : date, poste, projet, modèle, jetons d'entrée, de sortie, lus et écrits en cache, coût ; une ligne par requête qui a consommé des jetons. Ni texte, ni répondant ; pas de clé étrangère.
+3. **Grille de tarifs dans le code** (`shared/tarifs.ts`), datée ; un modèle absent garde ses jetons et son coût reste inconnu, signalé à l'écran.
+4. **Coût figé à l'appel**, en micro-dollars entiers.
+5. **En dollars**, la devise de la facture Anthropic.
+6. **Jamais bloquant** : l'enregistrement se fait après la réponse ; une panne est journalisée puis ignorée.
+7. **Admin seulement** : rien dans les routes publiques ni le MCP.
+8. **Pas de purge** : une ligne fait environ 150 octets.
+
 ## 3. Modèle de données (D1)
 
 Identifiants : texte aléatoire. Dates : ISO 8601 UTC. Suppression en cascade du projet vers ses dépendances.
@@ -54,6 +65,7 @@ Identifiants : texte aléatoire. Dates : ISO 8601 UTC. Suppression en cascade du
 - **repondants** — `id`, `questionnaire_id`, `jeton` (unique, 22 caractères), `nom`, `prenom`, `poste`, `entreprise`, `mail`, `origine` (`invitation` | `lien_generique`), `statut` (`invite` | `commence` | `termine`), `commence_le`, `termine_le`, et le suivi du calcul de la suite (migration 0002) : `suite_debut` (début du calcul en cours, nul sinon), `suite_essais` (essais ratés pour l'étape en cours), `suite_essai_le` (début du dernier essai), et `numero` (migration 0003) : numéro du pseudonyme « Répondant n », attribué au démarrage, le plus grand du projet plus un
 - **numeros_repondants** (migration 0003) — `projet_id`, `numero`, `repondant_id` : registre des numéros attribués, clé primaire (`projet_id`, `numero`). Il garantit l'unicité par projet (que `repondants`, sans `projet_id`, ne peut pas porter) et garde le numéro d'un répondant supprimé, qui n'est jamais réattribué
 - **tours** — `id`, `repondant_id`, `ordre`, `question_id` (nul en mode entretien ou pour une relance libre), `type` (`question` | `relance`), `question` (texte posé), `reponse` (JSON : valeur(s) choisie(s), texte, commentaire), `cree_le`
+- **consommation_ia** (migration 0005) — `id`, `cree_le`, `poste` (`cadrage` | `interview` | `analyse` | `interview_critique`), `projet_id` (nul pour l'interview critique, sans clé étrangère), `modele` (celui de la réponse), `jetons_entree`, `jetons_sortie`, `cache_lecture`, `cache_ecriture`, `cout_micro_usd` (nul sans tarif)
 - **analyses** — `id`, `projet_id`, `questionnaire_id` (optionnel), `repondant_id` (pour une fiche individuelle), `type` (`fiche_repondant` | `synthese` | `expression_besoin`), `contenu` (Markdown), `source` (identifiant du modèle API, ou `mcp`), `nb_entretiens`, `cree_le`
 
 Un projet a **un ou plusieurs questionnaires**, un par public visé. Un répondant appartient à un seul questionnaire.
@@ -195,3 +207,4 @@ Chaque lot fait l'objet de son propre plan d'implémentation et est livrable seu
 3. **Répondant** (livré) — liens générique et nominatif, identité, passation hybride et entretien, invitations et suivi dans l'admin. Migration 0002 à appliquer en production.
 4. **Analyses** (livré) — lecture des entretiens, analyses via MCP et via l'admin (API, en flux), exports CSV et Markdown. Les six outils MCP de lecture des réponses et des analyses, et de dépôt d'analyses, sont livrés avec ce lot. Migration 0003 (numéro des pseudonymes) à appliquer en production et en preview.
 5. **IA dans l'admin** — dialogue de cadrage et génération de questionnaires par l'API, avec les modèles du projet.
+6. **Coût de l'IA** (livré) — consommation de chaque appel à l'API enregistrée par poste et par projet, écran `/admin/couts` et coût sur la fiche projet. Migration 0005 à appliquer en production et en preview.
