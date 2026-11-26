@@ -49,7 +49,9 @@ La note et le résumé s'écrivent directement en Markdown, sans préambule ni q
 
 /**
  * Consigne système des trois appels du cadrage : le guide sans les outils, puis la section propre à l'admin.
- * Elle est la même pour le dialogue, la note et le résumé, et précède le contexte : un seul préfixe à mettre en cache.
+ * Elle est la même pour le dialogue, la note et le résumé, et précède le contexte. Le cache ne se partage pas pour
+ * autant entre ces trois appels (format de sortie, effort et, pour le résumé, contexte diffèrent) : il sert d'un tour
+ * du dialogue au suivant, ou d'une rédaction à la suivante.
  */
 export function consigneCadrage(): string {
   return `${consigneSansOutils('cadrage')}\n\n${SECTION_ADMIN}`

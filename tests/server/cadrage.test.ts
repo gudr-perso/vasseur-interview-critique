@@ -185,7 +185,6 @@ describe('contexteCadrage', () => {
       'Bonjour, voici le besoin.',
       '',
     ].join('\n'))
-    console.log('--- Contexte produit ---\n' + texte)
   })
 
   it('omet la note de cadrage sur demande (contexte du résumé), sans rien changer d\'autre', async () => {

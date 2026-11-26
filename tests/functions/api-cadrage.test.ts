@@ -166,8 +166,13 @@ describe('POST …/cadrage/tour', () => {
     expect(finPrefixe).toBeGreaterThan(0)
     expect(brut2.slice(0, finPrefixe)).toBe(brut1.slice(0, finPrefixe))
     expect(brut1.slice(0, finPrefixe)).toContain('"cache_control":{"type":"ephemeral"}')
-    // Les messages ne font que s'allonger : l'historique du premier tour (sans son rappel) ouvre celui du second.
     const [tour1, tour2] = api.lus()
+    // `output_config` vient après les messages dans le corps, mais il compte aussi pour le cache : le format de sortie
+    // injecte une consigne système (le changer invalide le cache), et un changement d'effort invalide au moins le
+    // cache des messages. Il doit donc rester identique, octet pour octet, d'un tour à l'autre.
+    expect(JSON.stringify(tour2.output_config)).toBe(JSON.stringify(tour1.output_config))
+    expect(tour1.output_config).toMatchObject({ effort: 'medium', format: { type: 'json_schema' } })
+    // Les messages ne font que s'allonger : l'historique du premier tour (sans son rappel) ouvre celui du second.
     const historique1 = tour1.messages.slice(0, -1)
     expect(tour2.messages.slice(0, historique1.length)).toEqual(historique1)
     expect(tour2.messages.slice(historique1.length, -1)).toEqual([
@@ -388,7 +393,11 @@ describe('POST …/cadrage/note et …/cadrage/resume', () => {
     expect(corps.model).toBe(MODELE)
     expect(corps.output_config).toEqual({ effort: 'high' })
     expect(corps).not.toHaveProperty('thinking')
-    // Même consigne et même contexte que le dialogue : le préfixe mis en cache est partagé.
+    // Même consigne et même contexte que le dialogue, mais le cache n'est pas pour autant partagé avec lui : la note
+    // n'a pas de format de sortie (le dialogue en a un, qui injecte sa propre consigne système : changer
+    // `output_config.format` invalide le cache) et son effort diffère. Le cache sert d'un tour du dialogue au suivant,
+    // et d'une note à la suivante sur le même projet. Minimum cachable : 512 jetons pour les modèles du catalogue
+    // (Fable 5.2, Opus 5.5, Sonnet 5.5, Haiku 5.5), que la consigne dépasse déjà seule.
     expect(corps.system[0].text).toBe(consigneCadrage())
     expect(corps.system[1]).toEqual({ type: 'text', text: (await contexteCadrage(base.db, id)).texte, cache_control: { type: 'ephemeral' } })
     expect(corps.system[1].text).toContain('Ancienne note.')
