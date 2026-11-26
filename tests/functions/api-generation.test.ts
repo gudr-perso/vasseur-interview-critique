@@ -257,3 +257,31 @@ describe('POST …/questionnaires/generer', () => {
     for (const module of [publics, generer]) expect(typeof module.onRequestPost).toBe('function')
   })
 })
+
+describe("coût de l'IA de la génération", () => {
+  const lignes = async (id: string) => (await base.db.prepare('SELECT * FROM consommation_ia WHERE projet_id = ? ORDER BY jetons_entree')
+    .bind(id).all<Record<string, unknown>>()).results
+
+  it('la proposition de publics écrit une ligne `cadrage` du projet', async () => {
+    const id = await nouveauProjet()
+    const api = apiSimulee(() => reponseJson({ publics: [] }, 'end_turn', { input_tokens: 77 }))
+    await lancer<SuccesPublics>(repondrePublics, id, api, {})
+    expect(await lignes(id)).toMatchObject([{ poste: 'cadrage', projet_id: id, jetons_entree: 77 }])
+  })
+
+  it('une génération corrigée au second essai écrit deux lignes `cadrage`', async () => {
+    const id = await nouveauProjet()
+    const fautif = structuredClone(hybrideValide)
+    fautif.contenu.questions[1].options = ['Chaque jour', ' chaque JOUR ']
+    const api = apiSimulee(
+      () => reponseJson(fautif, 'end_turn', { input_tokens: 100 }),
+      () => reponseJson(hybrideValide, 'end_turn', { input_tokens: 200 }),
+    )
+    const { flux } = await lancer<SuccesGeneration>(repondreGeneration, id, api, { public_vise: 'Comptables', mode: 'hybride' })
+    expect(flux!.fin.type).toBe('succes')
+    expect(await lignes(id)).toMatchObject([
+      { poste: 'cadrage', projet_id: id, jetons_entree: 100 },
+      { poste: 'cadrage', projet_id: id, jetons_entree: 200 },
+    ])
+  })
+})

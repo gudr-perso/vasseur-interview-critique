@@ -21,6 +21,7 @@ import { lireProjet } from '../services/projets'
 import { z } from '../zod'
 import { genererStructure, genererTexte, type DemandeIa, type GenerationTexte } from './appel'
 import { repondreEnFlux, type ReglagesFlux } from './flux'
+import type { Suivi } from './suivi'
 import { ErreurIa } from './types'
 
 type Contexte = EventContext<Env, 'id', Record<string, unknown>>
@@ -29,6 +30,11 @@ type Contexte = EventContext<Env, 'id', Record<string, unknown>>
 export interface OptionsAppelIa {
   fetch?: typeof globalThis.fetch
   reglages?: ReglagesFlux
+}
+
+/** Coût des appels de l'admin qui préparent le projet (dialogue, note, résumé, publics, questionnaires). */
+export function suiviCadrage(contexte: Contexte, projetId: string): Suivi {
+  return { db: contexte.env.DB, poste: 'cadrage', projet_id: projetId, attendre: p => contexte.waitUntil(p) }
 }
 
 // ─── Consigne ────────────────────────────────────────────────────────────────
@@ -196,6 +202,7 @@ export async function repondreTourCadrage(contexte: Contexte, options: OptionsAp
     maxTokens: JETONS_MAX_TOUR,
     effort: 'medium',
     fetch: options.fetch,
+    suivi: suiviCadrage(contexte, projetId),
   }
   const entete: EnteteTourCadrage = { plafond, questions_posees: posees, contexte_tronque: ctx.tronquee }
   return repondreEnFlux(contexte, {
@@ -234,7 +241,8 @@ function repondreTexte(
 export async function repondreNoteCadrage(contexte: Contexte, options: OptionsAppelIa = {}): Promise<Response> {
   const cleApi = cleOuRefus(contexte.env)
   if (cleApi instanceof Response) return cleApi
-  const { projet, messages, contexte: ctx } = await preparer(contexte.env, parametre(contexte.params.id))
+  const projetId = parametre(contexte.params.id)
+  const { projet, messages, contexte: ctx } = await preparer(contexte.env, projetId)
   return repondreTexte(contexte, { contexte_tronque: ctx.tronquee }, () => genererTexte({
     cleApi,
     modele: projet.modele_cadrage,
@@ -244,6 +252,7 @@ export async function repondreNoteCadrage(contexte: Contexte, options: OptionsAp
     maxTokens: JETONS_MAX_NOTE,
     effort: 'high',
     fetch: options.fetch,
+    suivi: suiviCadrage(contexte, projetId),
   }), 'la note de cadrage', options.reglages)
 }
 
@@ -267,5 +276,6 @@ export async function repondreResumeContexte(contexte: Contexte, options: Option
     maxTokens: JETONS_MAX_RESUME,
     effort: 'medium',
     fetch: options.fetch,
+    suivi: suiviCadrage(contexte, projetId),
   }), 'le résumé de contexte', options.reglages)
 }

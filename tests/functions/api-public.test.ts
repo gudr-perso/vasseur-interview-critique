@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { join, sep } from 'node:path'
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import * as repondantId from '../../functions/api/admin/repondants/[id]'
 import * as questionnaireRepondants from '../../functions/api/admin/questionnaires/[id]/repondants'
 import { onRequest as gardeAdmin } from '../../functions/api/admin/_middleware'
@@ -216,6 +216,94 @@ describe('parcours', () => {
     expect(r.statut).toBe(200)
     expect(r.donnees.etape.type).toBe('question')
     expect(r.donnees.identite.poste).toBe('Comptable')
+  })
+})
+
+describe("coût de l'IA des entretiens", () => {
+  const RELANCE = 'Pouvez-vous donner un exemple ?'
+  const reponseRelance = () => new Response(JSON.stringify({
+    id: 'msg_1', type: 'message', role: 'assistant', model: 'claude-sonnet-5-5', stop_reason: 'end_turn', stop_sequence: null,
+    content: [{ type: 'text', text: JSON.stringify({ relancer: true, question: RELANCE }) }],
+    usage: { input_tokens: 120, output_tokens: 30 },
+  }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+
+  /** Comme `appelerPublic`, avec une clé, l'API stubbée et `waitUntil` ; rend aussi le travail confié à waitUntil. */
+  async function appelerAvecIa(handler: Handler | undefined, params: Record<string, string>, corps?: unknown) {
+    if (!handler) throw new Error('Aucun handler')
+    const enCours: Promise<unknown>[] = []
+    const request = new Request('https://exemple.test/x', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: corps === undefined ? undefined : JSON.stringify(corps),
+    })
+    const env = { DB: base.db, ANTHROPIC_API_KEY: 'sk-test' }
+    const waitUntil = (p: Promise<unknown>) => { enCours.push(p) }
+    const reponse = await (entetesPublics as Handler)({
+      request, env, params, waitUntil, next: () => handler({ request, env, params, waitUntil } as never),
+    } as never)
+    const texte = await reponse.text()
+    await Promise.all(enCours)
+    return { statut: reponse.status, donnees: texte ? JSON.parse(texte) : null, enCours }
+  }
+
+  const lignes = async () => (await base.db.prepare('SELECT * FROM consommation_ia').all<Record<string, unknown>>()).results
+
+  afterEach(async () => {
+    vi.unstubAllGlobals()
+    await base.db.prepare('DELETE FROM consommation_ia').run()
+  })
+
+  it('une relance écrit une ligne `interview` du projet, sans rien changer à la réponse publique', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => reponseRelance()))
+    const q = await ouvrir('hybride')
+    const jeton = await sInscrire(q.code)
+    const r = await appelerAvecIa(reponses.onRequestPost, { jeton }, { ordre: 1, reponse: { texte: 'Sur papier' } })
+    expect(r.statut).toBe(200)
+    expect(r.donnees.etape).toEqual({
+      type: 'question',
+      question: { ordre: 2, type: 'relance', libelle: RELANCE, rappel: { question: 'Comment faites-vous ?', reponse: 'Sur papier' } },
+      progression: expect.any(Object),
+    })
+    expect(JSON.stringify(r.donnees)).not.toMatch(/jetons|cout|consommation|projet_id/)
+    expect(r.enCours).toHaveLength(1)
+    const l = await lignes()
+    expect(l).toHaveLength(1)
+    expect(l[0]).toMatchObject({ poste: 'interview', projet_id: projetId, modele: 'claude-sonnet-5-5', jetons_entree: 120, jetons_sortie: 30 })
+  })
+
+  it('base du suivi en panne : la relance est quand même posée', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => reponseRelance()))
+    const q = await ouvrir('hybride')
+    const jeton = await sInscrire(q.code)
+    await base.db.prepare('ALTER TABLE consommation_ia RENAME TO consommation_ia_hors_service').run()
+    try {
+      const r = await appelerAvecIa(reponses.onRequestPost, { jeton }, { ordre: 1, reponse: { texte: 'Sur papier' } })
+      expect(r.statut).toBe(200)
+      expect(r.donnees.etape.question).toMatchObject({ type: 'relance', libelle: RELANCE })
+    } finally {
+      await base.db.prepare('ALTER TABLE consommation_ia_hors_service RENAME TO consommation_ia').run()
+    }
+    expect(await lignes()).toHaveLength(0)
+  })
+
+  it('POST /suivant passe aussi le coût à waitUntil', async () => {
+    // Mode entretien : la première réponse échoue (IA en panne), le nouvel essai réussit et compte sa ligne.
+    const q = await ouvrir('entretien')
+    const jeton = await sInscrire(q.code)
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{"type":"error","error":{"type":"invalid_request_error","message":"x"}}', { status: 400 })))
+    const interrompu = await appelerAvecIa(reponses.onRequestPost, { jeton }, { ordre: 1, reponse: { texte: 'Voilà' } })
+    expect(interrompu.donnees.etape).toEqual({ type: 'interrompu', reessai_possible: true })
+    await base.db.prepare('UPDATE repondants SET suite_essai_le = NULL WHERE jeton = ?').bind(jeton).run()
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      id: 'msg_2', type: 'message', role: 'assistant', model: 'claude-sonnet-5-5', stop_reason: 'end_turn', stop_sequence: null,
+      content: [{ type: 'text', text: JSON.stringify({ fin: false, question: 'Et ensuite ?', themes_couverts: [] }) }],
+      usage: { input_tokens: 50, output_tokens: 5 },
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } })))
+    const r = await appelerAvecIa(suivant.onRequestPost, { jeton })
+    expect(r.statut).toBe(200)
+    expect(r.donnees.etape.question).toMatchObject({ libelle: 'Et ensuite ?' })
+    const l = await lignes()
+    expect(l).toHaveLength(1)
+    expect(l[0]).toMatchObject({ poste: 'interview', projet_id: projetId, jetons_entree: 50 })
   })
 })
 

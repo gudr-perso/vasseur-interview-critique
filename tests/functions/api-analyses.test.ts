@@ -75,8 +75,18 @@ function contexte(methode: string, chemin: string, corps?: unknown, id?: string,
   const env = cle === undefined ? { DB: base.db } : { DB: base.db, ANTHROPIC_API_KEY: cle }
   return {
     valeur: { request, env, params: id ? { id } : {}, waitUntil: (p: Promise<unknown>) => { enCours.push(p) } } as never,
-    /** Attend la fin du travail confié à waitUntil. */
-    tache: async () => { expect(enCours).toHaveLength(1); await Promise.all(enCours) },
+    /**
+     * Attend la fin du travail confié à waitUntil : la génération, puis l'enregistrement du coût de chacun des
+     * `appels` à l'API, confié en cours de route.
+     */
+    tache: async (appels = 0) => {
+      for (let vus = 0; vus < enCours.length;) {
+        const lot = enCours.slice(vus)
+        vus = enCours.length
+        await Promise.all(lot)
+      }
+      expect(enCours).toHaveLength(1 + appels)
+    },
     enCours,
   }
 }
@@ -234,6 +244,10 @@ describe('POST /api/admin/projets/:id/analyses — génération en flux', () => 
     expect(demande.message).toContain('# Projet : Saisie des temps')
     expect(demande.message).toContain('## Répondant 1 — Comptable, CUMA du Val')
     expect(demande.message).not.toContain('Je ne sais pas encore.')
+    expect(demande.suivi?.db).toBe(base.db)
+    expect(demande.suivi?.poste).toBe('analyse')
+    expect(demande.suivi?.projet_id).toBe(projetId)
+    expect(demande.suivi?.attendre).toBeTypeOf('function')
 
     const analyses = await analysesDuProjet()
     expect(analyses).toHaveLength(avant + 1)
@@ -352,7 +366,7 @@ describe("POST /api/admin/projets/:id/analyses — de bout en bout avec l'API si
       const lu = analyserFlux(await reponse.text())
       expect(lu.texte).toBe('## Fiche\nRépondant 1 veut un export.')
       expect(lu.fin.type).toBe('succes')
-      await ctx.tache()
+      await ctx.tache(1)
     }
     expect(appel).toHaveBeenCalledTimes(2)
     for (const [, init] of appel.mock.calls as unknown as [string, RequestInit][]) {
@@ -369,6 +383,51 @@ describe("POST /api/admin/projets/:id/analyses — de bout en bout avec l'API si
     expect(enregistrees).toHaveLength(2)
     expect(enregistrees.find(a => a.type === 'fiche_repondant')).toMatchObject({ repondant_id: repondants.A.id, source: MODELE, nb_entretiens: 1 })
     expect(enregistrees.find(a => a.type === 'synthese')).toMatchObject({ source: MODELE, nb_entretiens: 3 })
+  })
+})
+
+describe("POST /api/admin/projets/:id/analyses — coût de l'IA", () => {
+  beforeEach(async () => {
+    await viderAnalyses()
+    await base.db.prepare('DELETE FROM consommation_ia').run()
+  })
+
+  function reponseFlux(): Response {
+    const sse = (e: Record<string, unknown>) => `event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`
+    const evenements = [
+      { type: 'message_start', message: { id: 'msg_1', type: 'message', role: 'assistant', model: MODELE, content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 4321, output_tokens: 1 } } },
+      { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
+      { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: '## Synthèse\n' } },
+      { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Tous veulent un export.' } },
+      { type: 'content_block_stop', index: 0 },
+      { type: 'message_delta', delta: { stop_reason: 'end_turn', stop_sequence: null }, usage: { output_tokens: 321 } },
+      { type: 'message_stop' },
+    ]
+    return new Response(evenements.map(sse).join(''), { status: 200, headers: { 'Content-Type': 'text/event-stream' } })
+  }
+
+  it('genererAnalyse avec suivi écrit une ligne `analyse`', async () => {
+    const promesses: Promise<unknown>[] = []
+    const generation = genererAnalyse({
+      cleApi: 'sk-test', modele: MODELE, consigne: 'c', message: 'm', fetch: vi.fn(async () => reponseFlux()) as never,
+      suivi: { db: base.db, poste: 'analyse', projet_id: projetId, attendre: p => { promesses.push(p) } },
+    })
+    for await (const _ of generation) { /* lu jusqu'au bout */ }
+    await Promise.all(promesses)
+    const lignes = (await base.db.prepare('SELECT * FROM consommation_ia').all<Record<string, unknown>>()).results
+    expect(lignes).toMatchObject([{ poste: 'analyse', projet_id: projetId, modele: MODELE, jetons_entree: 4321, jetons_sortie: 321 }])
+  })
+
+  it("écrit la ligne `analyse` du projet même si le navigateur ne lit pas le flux", async () => {
+    const appel = vi.fn(async () => reponseFlux())
+    const post = route<'id'>(c => repondreAnalyse(c, options => genererAnalyse({ ...options, fetch: appel as never }))) as Handler
+    const ctx = contexte('POST', `/api/admin/projets/${projetId}/analyses`, { type: 'synthese' }, projetId)
+    const reponse = await post(ctx.valeur)
+    await reponse.body!.cancel()
+    await ctx.tache(1)
+    expect(await analysesDuProjet()).toHaveLength(1)
+    const lignes = (await base.db.prepare('SELECT * FROM consommation_ia').all<Record<string, unknown>>()).results
+    expect(lignes).toMatchObject([{ poste: 'analyse', projet_id: projetId, jetons_entree: 4321, jetons_sortie: 321 }])
   })
 })
 
