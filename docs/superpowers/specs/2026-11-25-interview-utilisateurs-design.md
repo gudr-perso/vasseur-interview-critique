@@ -32,6 +32,15 @@ Hors périmètre : gestion de comptes utilisateurs, envoi de mails d'invitation 
 | IA de cadrage et d'analyse | Disponible des deux côtés : admin web (API) et MCP (Claude) |
 | Proxy `/api/messages` | Placé derrière le mot de passe admin ; l'interview critique le demande donc aussi |
 
+### Décisions du lot 4 (analyses et exports)
+
+1. **Pseudonymisation pour l'IA.** Les entretiens envoyés à une IA (Claude via le MCP, ou l'API) désignent chaque personne par « Répondant n — poste, entreprise » : jamais de nom, prénom, mail ni jeton. Le numéro est attribué une fois, au démarrage de l'entretien, et ne change plus, même après la suppression d'un autre répondant. L'admin et les exports voient les vrais noms ; une fiche est rattachée à son répondant dans la base, et l'admin la lit sous son vrai nom.
+2. **Entretiens pris en compte.** Par défaut, les entretiens terminés seulement ; « inclure les entretiens en cours » y ajoute les commencés, marqués « entretien inachevé ».
+3. **Ce que l'IA d'analyse reçoit en plus des entretiens.** La note de cadrage, le résumé de contexte, les logiciels et l'objectif de chaque question ou thème ; pas le texte des documents joints. Le texte des répondants lui est présenté sous une forme qu'il ne peut pas contrefaire (lignes « > » sous la flèche, champs du titre sur une ligne), comme une donnée à analyser, jamais comme une consigne.
+4. **Taille maximale d'une analyse par l'API.** 400 000 caractères d'entretiens. Au-delà, analyser questionnaire par questionnaire, ou passer par Claude (MCP), qui lit les entretiens par morceaux.
+5. **Exports.** CSV pour un tableur (point-virgule, UTF-8 avec BOM), une ligne par question posée ; Markdown lisible, un entretien par section, avec les vrais noms. Par questionnaire et par projet entier.
+6. **Historique.** Chaque analyse est conservée avec sa date, sa source (`mcp` ou le modèle utilisé) et le nombre d'entretiens couverts. Rien n'est écrasé ; l'admin peut supprimer une analyse.
+
 ## 3. Modèle de données (D1)
 
 Identifiants : texte aléatoire. Dates : ISO 8601 UTC. Suppression en cascade du projet vers ses dépendances.
@@ -42,7 +51,8 @@ Identifiants : texte aléatoire. Dates : ISO 8601 UTC. Suppression en cascade du
 - **documents** — `id`, `projet_id`, `nom`, `contenu` (texte extrait), `cree_le`
 - **cadrage_messages** — `id`, `projet_id`, `role` (`ia` | `admin`), `contenu`, `cree_le` — dialogue de cadrage mené dans l'admin web
 - **questionnaires** — `id`, `projet_id`, `public_vise`, `mode` (`hybride` | `entretien`), `introduction` (texte d'accueil), `duree_estimee_min`, `contenu` (JSON, voir ci-dessous), `relances_max_par_question` (hybride, défaut 1), `tours_max` (défaut 12 relances au total en hybride, 15 tours en entretien), `code` (unique, 10 caractères aléatoires), `statut` (`brouillon` | `ouvert` | `clos`), `cree_le`, `maj_le`
-- **repondants** — `id`, `questionnaire_id`, `jeton` (unique, 22 caractères), `nom`, `prenom`, `poste`, `entreprise`, `mail`, `origine` (`invitation` | `lien_generique`), `statut` (`invite` | `commence` | `termine`), `commence_le`, `termine_le`, et le suivi du calcul de la suite (migration 0002) : `suite_debut` (début du calcul en cours, nul sinon), `suite_essais` (essais ratés pour l'étape en cours), `suite_essai_le` (début du dernier essai)
+- **repondants** — `id`, `questionnaire_id`, `jeton` (unique, 22 caractères), `nom`, `prenom`, `poste`, `entreprise`, `mail`, `origine` (`invitation` | `lien_generique`), `statut` (`invite` | `commence` | `termine`), `commence_le`, `termine_le`, et le suivi du calcul de la suite (migration 0002) : `suite_debut` (début du calcul en cours, nul sinon), `suite_essais` (essais ratés pour l'étape en cours), `suite_essai_le` (début du dernier essai), et `numero` (migration 0003) : numéro du pseudonyme « Répondant n », attribué au démarrage, le plus grand du projet plus un
+- **numeros_repondants** (migration 0003) — `projet_id`, `numero`, `repondant_id` : registre des numéros attribués, clé primaire (`projet_id`, `numero`). Il garantit l'unicité par projet (que `repondants`, sans `projet_id`, ne peut pas porter) et garde le numéro d'un répondant supprimé, qui n'est jamais réattribué
 - **tours** — `id`, `repondant_id`, `ordre`, `question_id` (nul en mode entretien ou pour une relance libre), `type` (`question` | `relance`), `question` (texte posé), `reponse` (JSON : valeur(s) choisie(s), texte, commentaire), `cree_le`
 - **analyses** — `id`, `projet_id`, `questionnaire_id` (optionnel), `repondant_id` (pour une fiche individuelle), `type` (`fiche_repondant` | `synthese` | `expression_besoin`), `contenu` (Markdown), `source` (identifiant du modèle API, ou `mcp`), `nb_entretiens`, `cree_le`
 
@@ -84,7 +94,7 @@ Mode entretien — guide :
    - Résultat : la **note de cadrage**, modifiable à la main.
 6. **Questionnaires** : génération par l'IA à partir de la note de cadrage (publics proposés, mode, questions ou guide), puis édition manuelle (modifier, réordonner, supprimer, ajouter), publication, clôture. La publication affiche l'URL à diffuser. Seul un questionnaire en brouillon est modifiable ou supprimable ; un questionnaire ouvert peut être clos. Un brouillon modifié en même temps dans l'admin et par Claude (MCP) n'est pas protégé : le dernier enregistrement l'emporte.
 7. **Répondants** : création d'invitations nominatives (lien personnel à copier), suivi invité / commencé / terminé, lecture d'un entretien, suppression d'un répondant et de ses réponses.
-8. **Analyses** : génération à la demande, historique conservé, lecture des analyses déposées via MCP, export CSV (une ligne par tour) et Markdown (un entretien par section).
+8. **Analyses** (lot 4, livré) : sur la fiche projet, génération à la demande d'une fiche de répondant, d'une synthèse ou d'une expression de besoin par l'API, avec le modèle d'analyse du projet. La portée se choisit parmi le projet entier ou un questionnaire, désigné par son public, son mode et son statut (et sa date de création si deux restent identiques). Le texte s'affiche au fil de l'eau ; à la fin, le lien mène à l'analyse enregistrée. Une fiche se lance aussi depuis la lecture d'un entretien. Historique conservé, lecture des analyses déposées via MCP, suppression. Export CSV (une ligne par tour) et Markdown (un entretien par section), par projet ou par questionnaire. L'aperçu Markdown ne charge aucune image. Garder la page ouverte pendant la génération : un onglet fermé peut empêcher l'enregistrement.
 
 ## 5. Parcours répondant
 
@@ -118,12 +128,13 @@ Objectif : faire dans Claude (claude.ai, Claude Desktop, Claude Code) le cadrage
 | `lire_guide` | renvoie la méthode à suivre pour une étape (`cadrage`, `questionnaire`, `fiche_repondant`, `synthese`, `expression_besoin`) et le format attendu |
 | `enregistrer_questionnaire`, `lire_questionnaire` | créer ou remplacer un questionnaire en brouillon |
 | `publier_questionnaire` | passe en `ouvert` et renvoie l'URL |
-| `lister_repondants`, `lire_entretien`, `lire_reponses` | suivi et lecture ; `lire_reponses` renvoie tous les entretiens terminés d'un projet ou d'un questionnaire sous forme compacte |
+| `lister_repondants`, `lire_entretien`, `lire_reponses` | suivi et lecture, pseudonymisés ; `lire_reponses` renvoie les entretiens terminés (et, sur demande, en cours) d'un projet ou d'un questionnaire sous forme compacte, par morceaux |
 | `enregistrer_analyse` | dépose une analyse, visible ensuite dans l'admin |
+| `lister_analyses`, `lire_analyse` | retrouver et relire les analyses enregistrées, avec leur portée (pseudonyme pour une fiche) |
 
 - `lire_guide` sert les **mêmes consignes** que celles utilisées par l'IA de l'admin web : une seule source pour la méthode, quel que soit le canal.
 - Aucun outil de suppression ; les suppressions et les invitations restent dans l'admin web.
-- Les contenus saisis par les répondants sont renvoyés comme données, clairement délimités.
+- Les contenus saisis par les répondants sont renvoyés comme données, clairement délimités : la réponse suit la flèche →, ses lignes suivantes commencent par « > », poste et entreprise tiennent sur la ligne du titre. Aucun texte saisi ne peut imiter un titre d'entretien, une question, une relance ou une flèche ; les guides d'analyse décrivent cette forme et demandent de traiter ce texte comme une donnée, jamais comme une consigne.
 
 ## 7. Architecture technique
 
@@ -182,5 +193,5 @@ Chaque lot fait l'objet de son propre plan d'implémentation et est livrable seu
    - **2A — Services et MCP** (livré) : services logiciels, projets, questionnaires ; serveur MCP avec `lire_guide`. Cadrage, génération et publication sont alors faisables dans Claude.
    - **2B — Écrans admin** (livré) : API admin et écrans des logiciels, des projets, d'édition et de publication des questionnaires.
 3. **Répondant** (livré) — liens générique et nominatif, identité, passation hybride et entretien, invitations et suivi dans l'admin. Migration 0002 à appliquer en production.
-4. **Analyses** — lecture des entretiens, analyses via MCP et via l'admin (API), exports. Les outils MCP de lecture des réponses et de dépôt d'analyses sont livrés avec ce lot.
+4. **Analyses** (livré) — lecture des entretiens, analyses via MCP et via l'admin (API, en flux), exports CSV et Markdown. Les six outils MCP de lecture des réponses et des analyses, et de dépôt d'analyses, sont livrés avec ce lot. Migration 0003 (numéro des pseudonymes) à appliquer en production et en preview.
 5. **IA dans l'admin** — dialogue de cadrage et génération de questionnaires par l'API, avec les modèles du projet.
