@@ -9,30 +9,40 @@ function sse(e: Evenement): string {
   return `event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`
 }
 
+export interface Compteurs {
+  input_tokens?: number
+  cache_read_input_tokens?: number
+  cache_creation_input_tokens?: number
+  output_tokens?: number
+}
+
 /** Réponse en flux de l'API : le texte en morceaux, puis la raison d'arrêt. */
-export function reponseSse(morceaux: string[], stop_reason = 'end_turn', modele = 'claude-simule'): Response {
+export function reponseSse(morceaux: string[], stop_reason = 'end_turn', modele = 'claude-simule', compteurs: Compteurs = {}): Response {
   const evenements: Evenement[] = [
     {
       type: 'message_start',
       message: {
         id: 'msg_1', type: 'message', role: 'assistant', model: modele, content: [], stop_reason: null, stop_sequence: null,
-        usage: { input_tokens: 10, output_tokens: 1, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
+        usage: {
+          input_tokens: compteurs.input_tokens ?? 10, output_tokens: 1,
+          cache_read_input_tokens: compteurs.cache_read_input_tokens ?? 0, cache_creation_input_tokens: compteurs.cache_creation_input_tokens ?? 0,
+        },
       },
     },
     { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
     ...morceaux.map(t => ({ type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: t } })),
     { type: 'content_block_stop', index: 0 },
-    { type: 'message_delta', delta: { stop_reason, stop_sequence: null }, usage: { output_tokens: 20 } },
+    { type: 'message_delta', delta: { stop_reason, stop_sequence: null }, usage: { output_tokens: compteurs.output_tokens ?? 20 } },
     { type: 'message_stop' },
   ]
   return new Response(evenements.map(sse).join(''), { status: 200, headers: { 'Content-Type': 'text/event-stream' } })
 }
 
 /** Sortie structurée : le JSON écrit en deux morceaux, comme le ferait le modèle. */
-export function reponseJson(valeur: unknown, stop_reason = 'end_turn'): Response {
+export function reponseJson(valeur: unknown, stop_reason = 'end_turn', compteurs?: Compteurs): Response {
   const texte = typeof valeur === 'string' ? valeur : JSON.stringify(valeur)
   const milieu = Math.floor(texte.length / 2)
-  return reponseSse([texte.slice(0, milieu), texte.slice(milieu)], stop_reason)
+  return reponseSse([texte.slice(0, milieu), texte.slice(milieu)], stop_reason, undefined, compteurs)
 }
 
 /** Erreur survenue au milieu du flux, après un premier morceau. */
@@ -52,8 +62,8 @@ export function reponseCoupee(premier: string): Response {
  */
 export function apiSimulee(...reponses: (() => Response | Promise<Response>)[]) {
   const corps: string[] = []
-  const appel = vi.fn(async (_url: string, init: RequestInit) => {
-    corps.push(init.body as string)
+  const appel = vi.fn(async (_url: string, init?: RequestInit) => {
+    corps.push(init?.body as string)
     const suivante = reponses.shift()
     if (!suivante) throw new Error("Appel à l'API non prévu par le test.")
     return suivante()
@@ -105,7 +115,13 @@ export function contexteRoute(db: D1Database, methode: string, id: string, corps
   const env = cle === undefined ? { DB: db } : { DB: db, ANTHROPIC_API_KEY: cle }
   return {
     valeur: { request, env, params: { id }, waitUntil: (p: Promise<unknown>) => { enCours.push(p) } } as never,
-    tache: async () => { await Promise.all(enCours) },
+    tache: async () => {
+      for (let vus = 0; vus < enCours.length;) {
+        const lot = enCours.slice(vus)
+        vus = enCours.length
+        await Promise.all(lot)
+      }
+    },
     enCours,
   }
 }
