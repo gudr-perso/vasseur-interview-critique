@@ -8,6 +8,7 @@ import { Alerte, Chargement, CLASSE_LIEN, ErreurChargement, useAction, useCharge
 import { LIBELLES_STATUT_PROJET } from './libelles'
 import { ProjetAnalyses } from './ProjetAnalyses'
 import { ProjetCadrage } from './ProjetCadrage'
+import { ProjetCouts } from './ProjetCouts'
 import { ProjetDocuments } from './ProjetDocuments'
 import { ProjetInformations } from './ProjetInformations'
 import { ProjetModeles } from './ProjetModeles'
@@ -98,6 +99,7 @@ export function ProjetScreen() {
         }))}
       />
       <ProjetAnalyses projet={projet} />
+      <ProjetCouts projetId={projet.id} />
       <ZoneDanger projet={projet} />
     </>
   )

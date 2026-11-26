@@ -1,4 +1,5 @@
 import type { Analyse, AnalyseResume, SuccesAnalyse, TypeAnalyse } from '../../shared/analyses'
+import type { CoutsGlobaux, CoutsProjet } from '../../shared/couts'
 import type {
   DemandeTourCadrage, EnteteCadrage, EnteteTourCadrage, EtatDialogue, SuccesTexteCadrage, SuccesTourCadrage,
 } from '../../shared/cadrage'
@@ -188,6 +189,10 @@ export const api = {
       appel<RepondantResume>('POST', `/questionnaires/${questionnaireId}/repondants`, identite),
     lireEntretien: (id: string) => appel<EntretienLu>('GET', `/repondants/${id}`),
     supprimer: (id: string) => appel<void>('DELETE', `/repondants/${id}`),
+  },
+  couts: {
+    globaux: (depuis?: string) => appel<CoutsGlobaux>('GET', `/couts${depuis ? `?depuis=${depuis}` : ''}`),
+    projet: (id: string) => appel<CoutsProjet>('GET', `/projets/${id}/couts`),
   },
   analyses: {
     lister: (projetId: string, filtre: FiltreAnalyses = {}) => {
