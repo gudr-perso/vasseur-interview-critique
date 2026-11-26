@@ -81,3 +81,10 @@ export const schemaDemandeAnalyse = z.object({
 export const schemaTourCadrage = z.object({
   texte: z.string().optional(),
 })
+
+// Génération d'un questionnaire par l'IA ; les longueurs sont vérifiées par la route, avant tout appel.
+export const schemaGenerationQuestionnaire = z.object({
+  public_vise: z.string(),
+  mode: z.enum(MODES),
+  consignes: z.string().optional(),
+})
