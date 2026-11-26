@@ -26,6 +26,8 @@ Les clients capables d'envoyer des en-têtes peuvent utiliser `https://<votre-do
 3. « Prépare le questionnaire pour les comptables » → `lire_guide` (questionnaire), puis `enregistrer_questionnaire` en brouillon.
 4. « Publie-le » → `publier_questionnaire` renvoie l'adresse à diffuser.
 
+Le cadrage et la rédaction des questionnaires se font aussi dans l'admin, par l'API, avec le modèle de cadrage du projet (« Être interrogé par l'IA », « Proposer des publics »). Les deux voies coexistent et suivent les mêmes guides que `lire_guide` renvoie : l'admin reprend la méthode du guide sans sa section « Avec les outils ». La note de cadrage et les questionnaires sont les mêmes dans les deux voies ; le dialogue de cadrage mené dans l'admin, lui, n'est pas transmis à Claude.
+
 ## Déroulé type d'une analyse dans Claude
 
 1. « Fais la synthèse des entretiens du projet … » → `lire_guide` (synthese), `lire_projet` pour la note de cadrage et la liste des questionnaires.

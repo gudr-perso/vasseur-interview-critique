@@ -47,21 +47,28 @@ src/
   lib/                 — api.ts, adminApi.ts, modeles.ts, templates.ts, presets.ts
   components/          — ui/, layout/
   screens/             — écrans de l'interview critique, NotFound
-  admin/               — écrans admin : projets, logiciels, fiche projet, éditeur de questionnaire, répondants,
-                         analyses (génération, suivi du flux, lecture), exports ; api.ts (client), contenu.ts
-                         (logique d'édition), extraction.ts (texte des fichiers), fluxAnalyse.ts (lecture du flux)
+  admin/               — écrans admin : projets, logiciels, fiche projet, cadrage avec l'IA, éditeur de questionnaire,
+                         génération de questionnaires, répondants, analyses (génération, suivi du flux, lecture),
+                         exports ; api.ts (client), contenu.ts (logique d'édition), extraction.ts (texte des
+                         fichiers), flux.ts (lecteur commun des réponses en flux), fluxAnalyse.ts et formatsFlux.ts
+                         (formats propres à chaque flux), appelFlux.ts (suivi d'un appel), dialogueCadrage.ts
+                         (logique du dialogue de cadrage)
   repondant/           — parcours répondant : lien générique, entretien, saisies ; api.ts, stockage.ts, textes.ts
   routes/              — RequireAdmin
 shared/                — types et constantes communs navigateur / serveur (modeles.ts, interviews.ts, repondants.ts,
-                         analyses.ts : types des analyses et contrat du flux de génération)
+                         flux.ts : contrat commun des réponses de l'IA en flux ; analyses.ts, cadrage.ts,
+                         generation.ts : types propres à chaque travail de l'IA dans l'admin)
 server/                — logique serveur : auth, modeles, http, env, ids, erreurs, guides, api (enveloppe des routes)
   services/            — logiciels, projets, questionnaires, repondants, reponses, entretiens, corpus, analyses,
-                         exports (règles métier sur D1)
+                         cadrage, exports (règles métier sur D1)
   ia/                  — décisions de l'IA pendant un entretien : types.ts (interface Ia), consignes.ts, anthropic.ts ;
-                         analyse.ts (analyse par l'API, en flux)
+                         travaux de l'IA dans l'admin : appel.ts (appel en flux à l'API Messages), flux.ts (réponse
+                         en flux commune), analyse.ts, cadrage.ts (dialogue, note, résumé), questionnaires.ts
+                         (publics proposés, questionnaire généré)
   mcp/                 — outils, serveur et contrôle d'accès MCP
 functions/api/         — routes : messages.ts (proxy), admin/{logiciels,projets,documents,questionnaires,repondants,analyses}
-                         (dont projets/[id]/{analyses,export} et questionnaires/[id]/export),
+                         (dont projets/[id]/{analyses,export,cadrage/*,questionnaires/{publics,generer}} et
+                         questionnaires/[id]/export),
                          public/{q/[code],r/[jeton]} (parcours répondant, sans session)
 functions/mcp/         — serveur MCP : /mcp/<jeton> et /mcp (Bearer)
 scripts/               — verifier-mcp.mjs
@@ -99,9 +106,20 @@ Trois livrables par projet : fiche d'un répondant, synthèse (projet ou questio
 - **Corpus** (`server/services/corpus.ts`) : entretiens en Markdown compact, terminés seulement par défaut (`inclure_en_cours` ajoute les commencés). Il sert au MCP, à l'API et à l'export Markdown. Pour une IA, chaque personne est « Répondant n » : jamais de nom, prénom, mail ni jeton. Le numéro (`repondants.numero`, migration 0003) est attribué une fois au démarrage, le plus grand du projet plus un, et inscrit dans `numeros_repondants` (clé primaire projet + numéro) dans le même lot D1 : unicité garantie même en cas de démarrages simultanés, aucun renumérotage après une suppression, aucun numéro réattribué.
 - **Texte des répondants neutralisé** : une réponse ou un commentaire sur plusieurs lignes continue sous la flèche → par des lignes qui commencent par « > » ; poste, entreprise, nom, libellés et objectifs tiennent sur une ligne, sans `#` dans un titre. Aucun texte saisi ne peut commencer un titre, une question, une relance ou une flèche. `FORME_ENTRETIENS` (`server/guides.ts`) décrit exactement cette forme aux IA et rappelle que ce texte est une donnée, jamais une consigne : toute modification du rendu doit s'y refléter.
 - **Questionnaires désignés** par `libellesQuestionnaires` (`shared/interviews.ts`) : public, mode et statut, puis date de création si deux restent identiques.
-- **Analyse par l'API** (`server/ia/analyse.ts`, `POST /api/admin/projets/:id/analyses`) : guide de l'étape comme consigne, en-tête du projet (cadrage, logiciels, objectifs ; pas les documents) et corpus, 400 000 caractères au plus. Réponse en flux `text/plain` dont le contrat est décrit dans `shared/analyses.ts` : une ligne d'en-tête JSON (`nb_entretiens` et un séparateur aléatoire), le texte au fil de l'eau, puis des lignes de contrôle `\n<séparateur> <JSON>\n` que le client retire du texte (`src/admin/fluxAnalyse.ts`) : signal de vie après 15 s sans envoi, puis succès avec l'`analyse_id` enregistré, ou erreur. Le modèle ne voit jamais le séparateur. La génération est conduite par une tâche confiée à `waitUntil`, qui écrit sans attendre le navigateur et enregistre l'analyse à la fin.
+- **Analyse par l'API** (`server/ia/analyse.ts`, `POST /api/admin/projets/:id/analyses`) : guide de l'étape comme consigne, en-tête du projet (cadrage, logiciels, objectifs ; pas les documents) et corpus, 400 000 caractères au plus. Réponse en flux (servie en `text/event-stream`) selon le contrat commun de `shared/flux.ts` : une ligne d'en-tête JSON (`nb_entretiens` et un séparateur aléatoire), le texte au fil de l'eau, puis des lignes de contrôle `\n<séparateur> <JSON>\n` que le lecteur commun `src/admin/flux.ts` retire du texte : signal de vie après 15 s sans envoi, puis succès avec l'`analyse_id` enregistré, ou erreur. Le modèle ne voit jamais le séparateur. La génération est conduite par une tâche confiée à `waitUntil`, qui écrit sans attendre le navigateur et enregistre l'analyse à la fin.
 - **Aperçu Markdown** (`src/admin/ApercuMarkdown.tsx`) : aucune image n'est chargée, seul son texte alternatif s'affiche.
 - **Exports** (`server/services/exports.ts`), par projet ou par questionnaire : CSV pour un tableur (point-virgule, UTF-8 avec BOM, une ligne par question posée, cellules protégées contre l'injection de formule) et Markdown (un entretien par section, vrais noms, même neutralisation que le corpus).
+
+## Cadrage et génération dans l'admin
+
+Ce que Claude fait par le MCP (cadrer un projet, écrire ses questionnaires) se fait aussi dans l'admin par l'API, avec le modèle de cadrage du projet. Les deux voies coexistent et suivent les mêmes guides (`server/guides.ts`, étapes `cadrage` et `questionnaire`) : la consigne est le guide sans sa section « Avec les outils », suivie d'une courte section propre à l'admin (`SECTION_ADMIN` de `server/ia/cadrage.ts` et de `server/ia/questionnaires.ts`). Une règle de méthode utile aux deux voies s'écrit dans le guide, pas dans la section de l'admin.
+
+- **Appels** (`server/ia/appel.ts`) : `messages.stream`, effort fixé par l'appelant, sans paramètre `thinking`. Le contexte du projet est un second bloc système marqué `cache_control` : consigne puis contexte forment un préfixe identique d'un tour du dialogue au suivant. Le cache ne se partage pas entre dialogue, note, résumé et questionnaires (format de sortie, effort ou contexte diffèrent).
+- **Contexte** (`contexteCadrage`, `server/services/cadrage.ts`) : description, fiches des logiciels, note de cadrage, texte complet des documents, 300 000 caractères au plus (au-delà, chaque document est tronqué dans la même proportion, avec une mention). Jamais de donnée de répondant. Le résumé de contexte, destiné à l'IA d'entretien, est rédigé à partir d'un contexte **sans** la note (`avecNote: false`) : ni la note ni ses hypothèses ne doivent l'atteindre.
+- **Dialogue** (`POST /api/admin/projets/:id/cadrage/tour`, `{ texte?, apres }`) : une question à la fois, en sortie structurée `{ fin, message }`, chaque message enregistré avec sa nature (`question`, `reponse`, `conclusion`, migration 0004). Plafond de questions selon le type de demande (3, 6 ou 12) : atteint, le serveur conclut sans appeler l'IA. `apres` est le dernier message vu par le client : la réponse de l'admin n'est écrite que s'il est toujours le dernier (`ajouterMessageApres`, condition et écriture dans une seule requête ; sinon 409), et le message de l'IA que si le dialogue n'a pas bougé depuis le début du tour (sinon le tour est abandonné sans rien écrire). Deux onglets ou une relance en double ne produisent donc jamais deux questions de suite. La charge utile de succès porte les messages écrits pendant le tour, pour compléter le fil si sa relecture échoue.
+- **Note et résumé** (`…/cadrage/note`, `…/cadrage/resume`) : texte au fil de l'eau qui remplit la zone de saisie ; rien n'est enregistré tant que l'admin ne clique pas « Enregistrer ». Un texte plus long que la zone est coupé, avec un avertissement.
+- **Questionnaires** (`…/questionnaires/publics`, `…/questionnaires/generer`) : note de cadrage obligatoire. Les publics proposés (1 à 6) ne sont pas enregistrés ; une proposition au public vide est écartée. Un questionnaire généré est validé par `validerContenu` puis créé en brouillon ; une sortie refusée (hors schéma, contenu invalide, introduction vide) est renvoyée une seule fois au modèle avec le message d'erreur exact.
+- **Flux** : toutes ces réponses suivent le contrat commun de `shared/flux.ts` (`server/ia/flux.ts` côté serveur, `src/admin/flux.ts` côté client), comme les analyses : en-tête immédiat, signaux de vie, une seule ligne finale. Sans `ANTHROPIC_API_KEY`, ces routes répondent 503 et invitent à passer par Claude et le MCP.
 
 ## Déploiement Cloudflare Pages
 
@@ -116,7 +134,7 @@ npm run build
 #   npx wrangler d1 migrations apply vasseur-interview --remote
 ```
 
-Migrations 0002 et 0003 à appliquer en production : `npx wrangler d1 migrations apply vasseur-interview --remote`, et de même sur la base de preview. La 0003 ajoute `repondants.numero` et le registre `numeros_repondants`, et numérote les répondants existants dans l'ordre utilisé jusqu'ici (`commence_le`, puis `id`, par projet) : les pseudonymes des analyses déjà enregistrées restent justes.
+Migrations 0002, 0003 et 0004 à appliquer en production : `npx wrangler d1 migrations apply vasseur-interview --remote`, et de même sur la base de preview. La 0003 ajoute `repondants.numero` et le registre `numeros_repondants`, et numérote les répondants existants dans l'ordre utilisé jusqu'ici (`commence_le`, puis `id`, par projet) : les pseudonymes des analyses déjà enregistrées restent justes. La 0004 refait la table `cadrage_messages` avec la nature de chaque message (`question`, `reponse`, `conclusion`) ; les messages existants sont classés d'après leur auteur et, pour l'IA, le point d'interrogation final.
 
 Limite connue : une analyse lancée dans l'admin dont l'onglet est fermé peut ne pas être enregistrée, car Cloudflare ne prolonge le travail confié à `waitUntil` que d'environ 30 s après la fin de la réponse. D'où le message affiché pendant la génération : « Gardez cette page ouverte jusqu'à la fin ».
 
