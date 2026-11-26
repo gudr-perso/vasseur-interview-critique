@@ -90,3 +90,6 @@ export const schemaGenerationQuestionnaire = z.object({
   mode: z.enum(MODES),
   consignes: z.string().optional(),
 })
+
+/** Premier jour d'un mois, `AAAA-MM-01` : début de la période des coûts de l'IA. */
+export const schemaDepuisCouts = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])-01$/)

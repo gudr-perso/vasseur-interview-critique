@@ -7,6 +7,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod'
 import type { z } from '../zod'
+import { fetchSuivi, type Suivi } from './suivi'
 import { ErreurIa } from './types'
 
 /**
@@ -34,6 +35,8 @@ export interface DemandeIa {
   effort: Effort
   /** Pour les tests : remplace l'accès réseau. */
   fetch?: typeof globalThis.fetch
+  /** Coût de l'appel : jetons enregistrés sous ce poste et ce projet. */
+  suivi?: Suivi
 }
 
 /** Messages d'erreur propres au travail demandé ; des formules neutres par défaut. */
@@ -85,7 +88,8 @@ async function* parcourir(
   demande: DemandeIa, format: FormatJson | undefined, libelles: LibellesErreur,
 ): AsyncGenerator<string, Anthropic.Message> {
   const client = new Anthropic({
-    apiKey: demande.cleApi, timeout: DELAI_REPONSE_MS, maxRetries: NOUVEAUX_ESSAIS_AVANT_FLUX, fetch: demande.fetch,
+    apiKey: demande.cleApi, timeout: DELAI_REPONSE_MS, maxRetries: NOUVEAUX_ESSAIS_AVANT_FLUX,
+    fetch: demande.suivi ? fetchSuivi(demande.suivi, demande.fetch) : demande.fetch,
   })
   const ouvrir = (avecEffort: boolean) => {
     const sortie = { ...(format ? { format } : {}), ...(avecEffort ? { effort: demande.effort } : {}) }

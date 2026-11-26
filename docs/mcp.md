@@ -82,3 +82,5 @@ MCP_TOKEN=<jeton de .dev.vars> node scripts/verifier-mcp.mjs [url]
 ```
 
 `url` est l'origine du serveur, `http://localhost:8790` par défaut. Le script se connecte avec le client officiel dans les deux générations du protocole, vérifie qu'il voit les dix-neuf outils et qu'une erreur métier revient bien comme résultat d'erreur ; il se termine par un code non nul au moindre écart.
+
+Le coût de l'IA (lot 6) n'est pas exposé au MCP : il se lit seulement dans l'admin, sur `/admin/couts`. Une analyse faite dans Claude par le MCP ne consomme pas l'API de l'application et n'y figure donc pas.

@@ -19,7 +19,7 @@ import { lireProjet } from '../services/projets'
 import { enregistrerQuestionnaire, validerContenu } from '../services/questionnaires'
 import { z } from '../zod'
 import { ErreurSortie, genererStructure, type DemandeIa } from './appel'
-import type { OptionsAppelIa } from './cadrage'
+import { suiviCadrage, type OptionsAppelIa } from './cadrage'
 import { repondreEnFlux } from './flux'
 import { ErreurIa } from './types'
 
@@ -159,7 +159,8 @@ async function preparer(env: Env, projetId: string) {
 
 /** `POST …/questionnaires/publics` : publics proposés par l'IA, en flux. Rien n'est enregistré. */
 export async function repondrePublics(contexte: Contexte, options: OptionsAppelIa = {}): Promise<Response> {
-  const pret = await preparer(contexte.env, parametre(contexte.params.id))
+  const projetId = parametre(contexte.params.id)
+  const pret = await preparer(contexte.env, projetId)
   if (pret.refus) return pret.refus
   const { cleApi, projet, contexte: ctx } = pret
   const demande: DemandeIa = {
@@ -171,6 +172,7 @@ export async function repondrePublics(contexte: Contexte, options: OptionsAppelI
     maxTokens: JETONS_MAX_PUBLICS,
     effort: 'medium',
     fetch: options.fetch,
+    suivi: suiviCadrage(contexte, projetId),
   }
   const entete: EnteteGeneration = { contexte_tronque: ctx.tronquee }
   return repondreEnFlux(contexte, {
@@ -224,6 +226,7 @@ export async function repondreGeneration(contexte: Contexte, options: OptionsApp
             maxTokens: JETONS_MAX_QUESTIONNAIRE,
             effort: 'high',
             fetch: options.fetch,
+            suivi: suiviCadrage(contexte, projetId),
           }, schema)
         } catch (e) {
           if (e instanceof ErreurSortie) return { brut: e.brut, erreur: e.detail }

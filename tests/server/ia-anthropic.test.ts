@@ -1,6 +1,8 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { creerIaAnthropic } from '../../server/ia/anthropic'
+import type { Suivi } from '../../server/ia/suivi'
 import { ErreurIa } from '../../server/ia/types'
+import { creerBaseDeTest } from '../helpers/d1'
 
 const contexte = { titre_projet: 'P', public_vise: 'Comptables', logiciels: [], resume_contexte: '' }
 const demandeRelance = {
@@ -103,5 +105,48 @@ describe('IA Anthropic', () => {
     await expect(ia(tropLongue as never).prochainTour({
       contexte, question_ouverture: 'R', themes: [], historique: [], tours_restants: 1,
     })).rejects.toThrow(ErreurIa)
+  })
+})
+
+describe("IA Anthropic : coût des appels", () => {
+  let base: Awaited<ReturnType<typeof creerBaseDeTest>>
+  beforeAll(async () => { base = await creerBaseDeTest() })
+  afterAll(async () => { await base.fermer() })
+  afterEach(async () => { await base.db.prepare('DELETE FROM consommation_ia').run() })
+
+  const lignes = async () => (await base.db.prepare('SELECT * FROM consommation_ia').all<Record<string, unknown>>()).results
+
+  function iaSuivie(fetch: typeof globalThis.fetch) {
+    const promesses: Promise<unknown>[] = []
+    const suivi: Suivi = { db: base.db, poste: 'interview', projet_id: 'projet-1', attendre: p => { promesses.push(p) } }
+    const ia = creerIaAnthropic({ cleApi: 'sk-test', modele: 'claude-sonnet-5-5', fetch, suivi })
+    return { ia, attendre: () => Promise.all(promesses) }
+  }
+
+  it('une relance avec suivi écrit une ligne `interview`', async () => {
+    const appel = vi.fn(async () => reponseApi({ relancer: true, question: 'Un exemple ?' }))
+    const { ia: suivie, attendre } = iaSuivie(appel as never)
+    expect(await suivie.deciderRelance(demandeRelance)).toEqual({ relancer: true, question: 'Un exemple ?' })
+    await attendre()
+    const l = await lignes()
+    expect(l).toHaveLength(1)
+    expect(l[0]).toMatchObject({ poste: 'interview', projet_id: 'projet-1', modele: 'claude-sonnet-5-5', jetons_entree: 10, jetons_sortie: 10 })
+  })
+
+  it("un refus du réglage d'effort puis un appel réussi n'écrit qu'une ligne", async () => {
+    const appel = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ type: 'error', error: { type: 'invalid_request_error', message: 'effort: unsupported for this model' } }), { status: 400 }))
+      .mockResolvedValueOnce(reponseApi({ relancer: false, question: null }))
+    const { ia: suivie, attendre } = iaSuivie(appel as never)
+    await suivie.deciderRelance(demandeRelance)
+    await attendre()
+    expect(appel).toHaveBeenCalledTimes(2)
+    expect(await lignes()).toHaveLength(1)
+  })
+
+  it("sans suivi, rien n'est écrit", async () => {
+    const appel = vi.fn(async () => reponseApi({ relancer: false, question: null }))
+    await ia(appel as never).deciderRelance(demandeRelance)
+    expect(await lignes()).toHaveLength(0)
   })
 })

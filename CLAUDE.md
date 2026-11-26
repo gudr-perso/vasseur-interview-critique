@@ -57,14 +57,15 @@ src/
   routes/              — RequireAdmin
 shared/                — types et constantes communs navigateur / serveur (modeles.ts, interviews.ts, repondants.ts,
                          flux.ts : contrat commun des réponses de l'IA en flux ; analyses.ts, cadrage.ts,
-                         generation.ts : types propres à chaque travail de l'IA dans l'admin)
+                         generation.ts : types propres à chaque travail de l'IA dans l'admin ; tarifs.ts : postes,
+                         grille de tarifs et calcul du coût ; couts.ts : types des cumuls)
 server/                — logique serveur : auth, modeles, http, env, ids, erreurs, guides, api (enveloppe des routes)
   services/            — logiciels, projets, questionnaires, repondants, reponses, entretiens, corpus, analyses,
-                         cadrage, exports (règles métier sur D1)
+                         cadrage, exports, couts (règles métier sur D1)
   ia/                  — décisions de l'IA pendant un entretien : types.ts (interface Ia), consignes.ts, anthropic.ts ;
                          travaux de l'IA dans l'admin : appel.ts (appel en flux à l'API Messages), flux.ts (réponse
                          en flux commune), analyse.ts, cadrage.ts (dialogue, note, résumé), questionnaires.ts
-                         (publics proposés, questionnaire généré)
+                         (publics proposés, questionnaire généré) ; suivi.ts (compteur de jetons sur `fetch`)
   mcp/                 — outils, serveur et contrôle d'accès MCP
 functions/api/         — routes : messages.ts (proxy), admin/{logiciels,projets,documents,questionnaires,repondants,analyses}
                          (dont projets/[id]/{analyses,export,cadrage/*,questionnaires/{publics,generer}} et
@@ -79,7 +80,7 @@ tests/                 — tests Vitest (server/, functions/, src/) ; helpers/ (
 ## Navigation
 
 React Router : `/` (interview critique), `/admin`, `/q/:code` et `/r/:jeton` (parcours répondant, publics), toute autre adresse → « Lien invalide ». `/` et `/admin` passent par `RequireAdmin`.
-Admin : `/admin` (projets), `/admin/logiciels`, `/admin/projets/nouveau`, `/admin/projets/:id`, `/admin/questionnaires/:id`, `/admin/repondants/:id` (lecture d’un entretien), `/admin/analyses/:id` (lecture d’une analyse).
+Admin : `/admin` (projets), `/admin/logiciels`, `/admin/projets/nouveau`, `/admin/projets/:id`, `/admin/questionnaires/:id`, `/admin/repondants/:id` (lecture d’un entretien), `/admin/analyses/:id` (lecture d’une analyse), `/admin/couts` (coût de l'IA).
 Les écrans admin avertissent avant de quitter une page qui porte une saisie non enregistrée : routeur de données (`createBrowserRouter`) et `useBlocker`, dans `src/admin/saisies.tsx`.
 À l'intérieur de l'interview critique, la navigation reste pilotée par `useStore().screen` :
 `config` → `loading` → `interview` → `synthesis`, et `config`/`synthesis` → `templates` → retour.
@@ -121,6 +122,15 @@ Ce que Claude fait par le MCP (cadrer un projet, écrire ses questionnaires) se 
 - **Questionnaires** (`…/questionnaires/publics`, `…/questionnaires/generer`) : note de cadrage obligatoire. Les publics proposés (1 à 6) ne sont pas enregistrés ; une proposition au public vide est écartée. Un questionnaire généré est validé par `validerContenu` puis créé en brouillon ; une sortie refusée (hors schéma, contenu invalide, introduction vide) est renvoyée une seule fois au modèle avec le message d'erreur exact.
 - **Flux** : toutes ces réponses suivent le contrat commun de `shared/flux.ts` (`server/ia/flux.ts` côté serveur, `src/admin/flux.ts` côté client), comme les analyses : en-tête immédiat, signaux de vie, une seule ligne finale. Sans `ANTHROPIC_API_KEY`, ces routes répondent 503 et invitent à passer par Claude et le MCP.
 
+## Coût de l'IA
+
+Chaque requête à l'API Anthropic qui consomme des jetons est enregistrée dans `consommation_ia` (migration 0005) : date, poste, projet, modèle, jetons d'entrée, de sortie, lus et écrits en cache, coût en micro-dollars. Quatre postes (`shared/tarifs.ts`) : `cadrage` (dialogue, note, résumé, publics, génération de questionnaires), `interview` (relances et tours d'entretien), `analyse`, `interview_critique` (proxy, sans projet). Ni texte ni donnée personnelle ; pas de clé étrangère, la dépense d'un projet supprimé reste dans le total.
+
+- **Point de passage unique** : `fetchSuivi` (`server/ia/suivi.ts`) enveloppe la fonction `fetch` des clients SDK (`appel.ts`, `anthropic.ts`) et du proxy. Requête et réponse passent sans changement ; les jetons sont lus sur une copie (`clone()` ou `tee()` du flux SSE, `usage` cumulatif des `message_delta`), après coup, et l'écriture est confiée à `waitUntil`. Une panne du suivi est journalisée (« Coût de l'IA ») et n'interrompt jamais l'appel utile. Les essais automatiques (SDK, reprise sans effort, second essai d'une génération) sont comptés chacun. Un flux coupé garde les derniers compteurs reçus : la sortie déjà produite peut être sous-comptée.
+- **Tout nouvel appel à l'API passe un `suivi`** (`{ db, poste, projet_id, attendre: p => contexte.waitUntil(p) }`). Un nouveau poste s'ajoute à `POSTES` et au `CHECK` de la table par une migration.
+- **Grille de tarifs** dans `shared/tarifs.ts`, en dollars par million de jetons, avec sa date de relevé (`DATE_RELEVE_TARIFS`) : à mettre à jour quand les prix changent ou qu'un modèle arrive (identifiant exact, ou le même suivi d'une date). Le coût est figé à l'appel ; un modèle sans tarif garde ses jetons, coûte `NULL` et est signalé à l'écran.
+- **Admin seulement** : `GET /api/admin/couts?depuis=AAAA-MM-01` et `GET /api/admin/projets/:id/couts`, écran `/admin/couts` et section « Coût de l'IA » de la fiche projet. Rien dans les routes publiques ni dans le MCP.
+
 ## Déploiement Cloudflare Pages
 
 ```bash
@@ -134,7 +144,7 @@ npm run build
 #   npx wrangler d1 migrations apply vasseur-interview --remote
 ```
 
-Migrations 0002, 0003 et 0004 à appliquer en production : `npx wrangler d1 migrations apply vasseur-interview --remote`, et de même sur la base de preview. La 0003 ajoute `repondants.numero` et le registre `numeros_repondants`, et numérote les répondants existants dans l'ordre utilisé jusqu'ici (`commence_le`, puis `id`, par projet) : les pseudonymes des analyses déjà enregistrées restent justes. La 0004 refait la table `cadrage_messages` avec la nature de chaque message (`question`, `reponse`, `conclusion`) ; les messages existants sont classés d'après leur auteur et, pour l'IA, le point d'interrogation final.
+Migrations 0002 à 0005 à appliquer en production : `npx wrangler d1 migrations apply vasseur-interview --remote`, et de même sur la base de preview. La 0003 ajoute `repondants.numero` et le registre `numeros_repondants`, et numérote les répondants existants dans l'ordre utilisé jusqu'ici (`commence_le`, puis `id`, par projet) : les pseudonymes des analyses déjà enregistrées restent justes. La 0004 refait la table `cadrage_messages` avec la nature de chaque message (`question`, `reponse`, `conclusion`) ; les messages existants sont classés d'après leur auteur et, pour l'IA, le point d'interrogation final. La 0005 (lot 6) crée `consommation_ia` : sans elle, le coût de l'IA n'est pas enregistré (erreur journalisée, sans effet sur les appels) et `/admin/couts` répond 500.
 
 Limite connue : une analyse lancée dans l'admin dont l'onglet est fermé peut ne pas être enregistrée, car Cloudflare ne prolonge le travail confié à `waitUntil` que d'environ 30 s après la fin de la réponse. D'où le message affiché pendant la génération : « Gardez cette page ouverte jusqu'à la fin ».
 

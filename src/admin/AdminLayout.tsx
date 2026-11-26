@@ -35,6 +35,7 @@ export function AdminLayout() {
   const { pathname } = useLocation()
   // Fiches de projet et éditeur de questionnaire appartiennent à la rubrique « Projets ».
   const surLogiciels = pathname.startsWith('/admin/logiciels')
+  const surCouts = pathname.startsWith('/admin/couts')
 
   return (
     // La garde englobe l'en-tête : le bouton de déconnexion doit savoir s'il reste une saisie.
@@ -45,8 +46,9 @@ export function AdminLayout() {
             Interviews — administration
           </Link>
           <nav aria-label="Rubriques" className="flex flex-wrap items-center gap-x-5 gap-y-1">
-            <Entree vers="/admin" courante={!surLogiciels}>Projets</Entree>
+            <Entree vers="/admin" courante={!surLogiciels && !surCouts}>Projets</Entree>
             <Entree vers="/admin/logiciels" courante={surLogiciels}>Logiciels</Entree>
+            <Entree vers="/admin/couts" courante={surCouts}>Coûts de l'IA</Entree>
             <Entree vers="/" courante={false}>Interview critique</Entree>
           </nav>
           <BoutonDeconnexion />

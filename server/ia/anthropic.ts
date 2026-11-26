@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod'
 import { z } from '../zod'
 import { CONSIGNE_ENTRETIEN, CONSIGNE_RELANCE, messageEntretien, messageRelance } from './consignes'
+import { fetchSuivi, type Suivi } from './suivi'
 import { ErreurIa, type DecisionRelance, type DecisionTour, type Ia } from './types'
 
 /** Les consignes demandent 300 caractères ; la marge évite de rejeter une question à peine plus longue. */
@@ -26,6 +27,8 @@ export interface OptionsIa {
   modele: string
   /** Pour les tests : remplace l'accès réseau. */
   fetch?: typeof globalThis.fetch
+  /** Coût des appels, sous le poste `interview`. */
+  suivi?: Suivi
 }
 
 function questionValide(question: string | null): string {
@@ -49,7 +52,8 @@ const JETONS_MAX = 3_000
 
 export function creerIaAnthropic(options: OptionsIa): Ia {
   const client = new Anthropic({
-    apiKey: options.cleApi, timeout: DELAI_APPEL_MS, maxRetries: NOUVEAUX_ESSAIS, fetch: options.fetch,
+    apiKey: options.cleApi, timeout: DELAI_APPEL_MS, maxRetries: NOUVEAUX_ESSAIS,
+    fetch: options.suivi ? fetchSuivi(options.suivi, options.fetch) : options.fetch,
   })
 
   async function demander<S extends z.ZodType>(

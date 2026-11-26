@@ -11,6 +11,7 @@ import { lireProjet } from '../services/projets'
 import { caracteres } from '../texte'
 import { genererTexte, type FinTexte, type GenerationTexte } from './appel'
 import { repondreEnFlux, type ReglagesFlux } from './flux'
+import type { Suivi } from './suivi'
 import { ErreurIa } from './types'
 
 // ─── Génération par l'API ────────────────────────────────────────────────────
@@ -26,6 +27,8 @@ export interface OptionsAnalyse {
   message: string
   /** Pour les tests : remplace l'accès réseau. */
   fetch?: typeof globalThis.fetch
+  /** Coût de l'appel, sous le poste `analyse`. */
+  suivi?: Suivi
 }
 
 export type FinAnalyse = FinTexte
@@ -46,6 +49,7 @@ export function genererAnalyse(options: OptionsAnalyse): GenerationAnalyse {
     maxTokens: JETONS_MAX_ANALYSE,
     effort: 'high',
     fetch: options.fetch,
+    suivi: options.suivi,
   }, {
     duree: 'Analyse abandonnée : la génération a dépassé 10 minutes.',
     impossible: "Génération de l'analyse impossible.",
@@ -145,6 +149,7 @@ export async function repondreAnalyse(
     modele,
     consigne: consigneAnalyse(demande.type),
     message: messageAnalyse(demande.type, await enteteAnalyse(env.DB, projetId), corpus.texte, corpus.nb_entretiens),
+    suivi: { db: env.DB, poste: 'analyse', projet_id: projetId, attendre: p => contexte.waitUntil(p) },
   }
 
   const entete: Omit<EnteteFluxAnalyse, 'controle'> = { nb_entretiens: corpus.nb_entretiens }

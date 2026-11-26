@@ -479,3 +479,23 @@ describe('GET et DELETE …/cadrage, routes', () => {
     for (const module of [tour, note, resume]) expect(typeof module.onRequestPost).toBe('function')
   })
 })
+
+describe("coût de l'IA du cadrage", () => {
+  const lignes = async (id: string) => (await base.db.prepare('SELECT * FROM consommation_ia WHERE projet_id = ?')
+    .bind(id).all<Record<string, unknown>>()).results
+
+  it('le tour, la note et le résumé écrivent chacun une ligne `cadrage` du projet', async () => {
+    const id = await nouveauProjet()
+    await tourAvec(id, apiSimulee(() => reponseJson({ fin: false, message: 'Qui saisit ?' }, 'end_turn', { input_tokens: 111, output_tokens: 11 })))
+    expect(await lignes(id)).toMatchObject([{ poste: 'cadrage', projet_id: id, jetons_entree: 111, jetons_sortie: 11 }])
+
+    for (const repondre of [repondreNoteCadrage, repondreResumeContexte]) {
+      const { reponse, ctx } = await lancer(avec(repondre, { fetch: apiSimulee(() => reponseSse(['Texte.'])).fetch }), id)
+      analyserFlux(await reponse.text())
+      await ctx.tache()
+    }
+    const toutes = await lignes(id)
+    expect(toutes).toHaveLength(3)
+    expect(toutes.every(l => l.poste === 'cadrage' && l.projet_id === id)).toBe(true)
+  })
+})

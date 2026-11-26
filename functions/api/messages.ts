@@ -1,12 +1,14 @@
 import { exigerAdmin } from '../../server/auth'
 import type { Env } from '../../server/env'
 import { erreur } from '../../server/http'
+import { fetchSuivi } from '../../server/ia/suivi'
 
 /**
  * Relais vers l'API Messages d'Anthropic pour l'interview critique.
  * Réservé à la session admin : sans ce contrôle, n'importe qui pourrait consommer la clé API.
  */
-export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
+export const onRequestPost: PagesFunction<Env> = async context => {
+  const { request, env } = context
   const refus = await exigerAdmin(request, env)
   if (refus) return refus
 
@@ -21,7 +23,11 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
 
   let reponse: Response
   try {
-    reponse = await fetch('https://api.anthropic.com/v1/messages', {
+    // Coût de l'interview critique, hors de tout projet ; l'enregistrement ne retarde ni ne fait échouer le relais.
+    const appeler = fetchSuivi({
+      db: env.DB, poste: 'interview_critique', projet_id: null, attendre: p => context.waitUntil?.(p),
+    })
+    reponse = await appeler('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
