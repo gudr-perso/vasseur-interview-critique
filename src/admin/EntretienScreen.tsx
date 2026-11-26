@@ -37,7 +37,10 @@ function Entretien({ entretien }: { entretien: EntretienLu }) {
   const nom = `${r.prenom} ${r.nom}`.trim()
 
   const supprimer = () => {
-    if (!window.confirm(`Supprimer définitivement l'entretien de ${nom} ?`)) return
+    // Ses fiches d'analyse partent avec lui (elles portent son entretien) ; les synthèses restent.
+    if (!window.confirm(
+      `Supprimer définitivement l'entretien de ${nom} ? Ses fiches d'analyse seront supprimées aussi ; les synthèses et expressions de besoin sont conservées.`,
+    )) return
     void suppression.lancer(async () => {
       await api.repondants.supprimer(r.id)
       naviguer(retour)

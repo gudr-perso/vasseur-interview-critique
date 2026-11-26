@@ -140,6 +140,22 @@ function numeroter(lignes: { id: string; numero: number }[]): Map<string, string
   return new Map(lignes.map(r => [r.id, pseudonyme(r.numero)]))
 }
 
+/** Tours rangés par répondant, dans l'ordre de lecture. */
+export function grouperParRepondant<T extends { repondant_id: string }>(lignes: T[]): Map<string, T[]> {
+  const parRepondant = new Map<string, T[]>()
+  for (const ligne of lignes) {
+    const liste = parRepondant.get(ligne.repondant_id)
+    if (liste) liste.push(ligne)
+    else parRepondant.set(ligne.repondant_id, [ligne])
+  }
+  return parRepondant
+}
+
+/** Vrai si au moins une question posée a reçu sa réponse. */
+export function aRepondu(tours: Pick<LigneTour, 'reponse'>[] | undefined): boolean {
+  return (tours ?? []).some(t => t.reponse !== null)
+}
+
 /** Pseudonyme de chaque répondant du projet qui a commencé son entretien, par identifiant. */
 export async function pseudonymesDuProjet(db: D1Database, projetId: string): Promise<Map<string, string>> {
   const { results } = await db.prepare(
@@ -194,8 +210,12 @@ export async function entretienPseudonymise(db: D1Database, repondantId: string)
      WHERE r.id = ?`,
   ).bind(repondantId).first<{ projet_id: string; questionnaire_id: string }>()
   if (!ligne) throw new ErreurMetier(`Répondant introuvable : ${repondantId}`, 404)
-  const corpus = await construireCorpus(db, { projet_id: ligne.projet_id, repondant_id: repondantId })
-  return { ...ligne, pseudonyme: corpus.repondants[0]?.pseudonyme ?? null, corpus }
+  const [corpus, pseudonymes] = await Promise.all([
+    construireCorpus(db, { projet_id: ligne.projet_id, repondant_id: repondantId }),
+    pseudonymesDuProjet(db, ligne.projet_id),
+  ])
+  // Un répondant qui a commencé sans encore répondre a un pseudonyme, mais un corpus vide.
+  return { ...ligne, pseudonyme: pseudonymes.get(repondantId) ?? null, corpus }
 }
 
 /**
@@ -219,30 +239,36 @@ export async function construireCorpus(db: D1Database, portee: PorteeAnalyse): P
   ).bind(portee.projet_id).all<LigneRepondant>()
   const pseudonymes = numeroter(commences)
 
-  let retenus: LigneRepondant[]
+  let candidats: LigneRepondant[]
   if (portee.repondant_id) {
     const appartient = await db.prepare(
       `SELECT r.id FROM repondants r JOIN questionnaires q ON q.id = r.questionnaire_id
        WHERE r.id = ? AND q.projet_id = ? AND (?3 IS NULL OR q.id = ?3)`,
     ).bind(portee.repondant_id, portee.projet_id, portee.questionnaire_id ?? null).first()
     if (!appartient) throw new ErreurMetier(`Répondant introuvable : ${portee.repondant_id}`, 404)
-    retenus = commences.filter(r => r.id === portee.repondant_id)
+    candidats = commences.filter(r => r.id === portee.repondant_id)
   } else {
     const statuts = portee.inclure_en_cours ? ['termine', 'commence'] : ['termine']
-    retenus = commences.filter(r =>
+    candidats = commences.filter(r =>
       statuts.includes(r.statut) && (!portee.questionnaire_id || r.questionnaire_id === portee.questionnaire_id))
   }
-  if (retenus.length === 0) return { texte: '', nb_entretiens: 0, repondants: [] }
+  if (candidats.length === 0) return { texte: '', nb_entretiens: 0, repondants: [] }
 
-  const { results: lignes } = await db.prepare(
-    `SELECT t.repondant_id, t.type, t.question_id, t.question, t.reponse
-     FROM tours t JOIN repondants r ON r.id = t.repondant_id JOIN questionnaires q ON q.id = r.questionnaire_id
-     WHERE q.projet_id = ? ORDER BY t.repondant_id, t.ordre`,
-  ).bind(portee.projet_id).all<LigneTour>()
-  const toursParRepondant = new Map<string, LigneTour[]>()
-  for (const ligne of lignes) {
-    toursParRepondant.set(ligne.repondant_id, [...(toursParRepondant.get(ligne.repondant_id) ?? []), ligne])
-  }
+  // Les tours d'un seul répondant quand la portée est une fiche ; sinon ceux du projet, lus en une fois.
+  const { results: lignes } = portee.repondant_id
+    ? await db.prepare(
+      `SELECT repondant_id, type, question_id, question, reponse FROM tours WHERE repondant_id = ? ORDER BY ordre`,
+    ).bind(portee.repondant_id).all<LigneTour>()
+    : await db.prepare(
+      `SELECT t.repondant_id, t.type, t.question_id, t.question, t.reponse
+       FROM tours t JOIN repondants r ON r.id = t.repondant_id JOIN questionnaires q ON q.id = r.questionnaire_id
+       WHERE q.projet_id = ? ORDER BY t.repondant_id, t.ordre`,
+    ).bind(portee.projet_id).all<LigneTour>()
+  const toursParRepondant = grouperParRepondant(lignes)
+
+  // Un entretien sans aucune réponse (identité donnée, puis plus rien) n'a rien à analyser : il n'est ni rendu ni compté.
+  const retenus = candidats.filter(r => aRepondu(toursParRepondant.get(r.id)))
+  if (retenus.length === 0) return { texte: '', nb_entretiens: 0, repondants: [] }
 
   return {
     texte: retenus.map(r => rendreEntretien(

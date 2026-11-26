@@ -144,6 +144,22 @@ describe('construireCorpus', () => {
     expect(corpus.repondants.map(r => r.id)).not.toContain(ids.D.id)
   })
 
+  it("ne rend ni ne compte un entretien commencé sans aucune réponse", async () => {
+    // Identité donnée sur le lien générique, première question posée, puis plus rien.
+    const { jeton } = await creerRepondantGenerique(base.db, qHybride.code, {
+      nom: 'Vide', prenom: 'Personne', poste: 'Silencieux', entreprise: 'CUMA Muette', mail: '',
+    })
+    const { repondant } = await lireRepondantParJeton(base.db, jeton)
+    await tour(repondant.id, 1, 'question', 'q1', 'À quelle fréquence saisissez-vous les temps ?', null)
+
+    const corpus = await construireCorpus(base.db, { projet_id: projetId, inclure_en_cours: true })
+    expect(corpus.nb_entretiens).toBe(3)
+    expect(corpus.repondants.map(r => r.id)).not.toContain(repondant.id)
+    expect(corpus.texte).not.toContain('CUMA Muette')
+    const seul = await construireCorpus(base.db, { projet_id: projetId, repondant_id: repondant.id })
+    expect(seul).toEqual({ texte: '', nb_entretiens: 0, repondants: [] })
+  })
+
   it('ne contient ni nom, ni prénom, ni mail, ni jeton, ni identifiant interne', async () => {
     const corpus = await construireCorpus(base.db, { projet_id: projetId, inclure_en_cours: true })
     const interdits = [

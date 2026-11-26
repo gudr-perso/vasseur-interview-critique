@@ -154,13 +154,20 @@ export async function modifierIdentite(db: D1Database, jeton: string, identiteBr
   const ligne = await db.prepare('SELECT id FROM repondants WHERE jeton = ?').bind(jeton).first<{ id: string }>()
   if (!ligne) throw new ErreurMetier('Lien invalide.', 404)
   const projet = '(SELECT q.projet_id FROM questionnaires q WHERE q.id = repondants.questionnaire_id)'
-  // Le statut est contrôlé dans la requête : un entretien terminé entre-temps n'est pas modifié.
+  // Statuts du répondant et du questionnaire contrôlés dans la requête : un entretien terminé, ou un questionnaire
+  // clos entre-temps, n'est pas modifié (et un invité ne commence pas sur un questionnaire clos).
   const { meta } = await demarrerAvecNumero(db, ligne.id, db.prepare(
     `UPDATE repondants SET nom = ?, prenom = ?, poste = ?, entreprise = ?, mail = ?,
             statut = 'commence', commence_le = COALESCE(commence_le, ?), numero = COALESCE(numero, ${prochainNumero(projet)})
-     WHERE id = ? AND statut != 'termine'`,
+     WHERE id = ? AND statut != 'termine'
+       AND EXISTS (SELECT 1 FROM questionnaires q WHERE q.id = repondants.questionnaire_id AND q.statut = 'ouvert')`,
   ).bind(identite.nom, identite.prenom, identite.poste, identite.entreprise, identite.mail, maintenantIso(), ligne.id))
   if (meta.changes > 0) return
+  const etat = await db.prepare(
+    'SELECT r.statut, q.statut AS questionnaire FROM repondants r JOIN questionnaires q ON q.id = r.questionnaire_id WHERE r.id = ?',
+  ).bind(ligne.id).first<{ statut: string; questionnaire: string }>()
+  if (!etat) throw new ErreurMetier('Lien invalide.', 404)
+  if (etat.statut !== 'termine' && etat.questionnaire !== 'ouvert') throw new ErreurMetier('Ce questionnaire est clos.', 410)
   throw new ErreurMetier('Cet entretien est terminé : les coordonnées ne peuvent plus être modifiées.', 409)
 }
 

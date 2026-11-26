@@ -123,15 +123,23 @@ export async function contexteCadrage(
 
   const longueurs = projet.documents.map(d => caracteres(d.contenu).length)
   const totalDocuments = longueurs.reduce((a, b) => a + b, 0)
-  const budget = Math.max(0, MAX_CONTEXTE - caracteres(texteEntete).length)
-  const tronquee = totalDocuments > budget
+  const mention = (gardes: number, total: number) => `*(document tronqué : ${gardes} caractères sur ${total})*`
+  // Tout ce qui n'est pas le texte des documents : en-tête, titres, sauts de ligne et, en cas de coupe, les mentions
+  // (comptées à leur longueur maximale, avec le total comme nombre de caractères gardés).
+  const longueurFixe = (avecMentions: boolean) => caracteres(
+    [texteEntete, '', '## Documents', ...projet.documents.flatMap((d, i) => [
+      '', `### ${d.nom}`, '', ...(avecMentions ? [mention(longueurs[i], longueurs[i])] : []),
+    ])].join('\n') + '\n',
+  ).length
+  const tronquee = totalDocuments + longueurFixe(false) > MAX_CONTEXTE
+  const budget = Math.max(0, MAX_CONTEXTE - longueurFixe(tronquee))
 
   const lignes = [texteEntete, '', '## Documents']
   projet.documents.forEach((document, i) => {
     const total = longueurs[i]
     const gardes = tronquee ? Math.floor(total * budget / totalDocuments) : total
     lignes.push('', `### ${document.nom}`, tronquee ? tronquer(document.contenu, gardes) : document.contenu)
-    if (tronquee) lignes.push(`*(document tronqué : ${gardes} caractères sur ${total})*`)
+    if (tronquee) lignes.push(mention(gardes, total))
   })
   return { texte: lignes.join('\n') + '\n', tronquee }
 }

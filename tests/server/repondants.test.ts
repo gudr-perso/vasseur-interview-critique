@@ -100,6 +100,19 @@ describe('invitations et suivi', () => {
     await expect(lireRepondantParJeton(base.db, 'inconnu')).rejects.toMatchObject({ statut: 404 })
   })
 
+  it("refuse qu'un invité commence ou modifie son identité sur un questionnaire clos", async () => {
+    const q = await questionnaire()
+    const invite = await creerInvitation(base.db, q.id, identite)
+    await cloreQuestionnaire(base.db, q.id)
+    await expect(modifierIdentite(base.db, invite.jeton, identite)).rejects.toMatchObject({ statut: 410 })
+    const ligne = await base.db.prepare('SELECT statut, numero FROM repondants WHERE id = ?')
+      .bind(invite.id).first<{ statut: string; numero: number | null }>()
+    expect(ligne).toEqual({ statut: 'invite', numero: null })
+    const inscrit = await base.db.prepare('SELECT COUNT(*) AS n FROM numeros_repondants WHERE repondant_id = ?')
+      .bind(invite.id).first<{ n: number }>()
+    expect(inscrit!.n).toBe(0)
+  })
+
   it('plafonne les répondants du lien générique à 300, sans compter les invitations', async () => {
     const q = await questionnaire()
     // Une seule instruction pour 299 lignes : un lot de 300 instructions est instable sous charge.

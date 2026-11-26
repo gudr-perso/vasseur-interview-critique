@@ -219,6 +219,26 @@ describe('export Markdown', () => {
     expect(e.contenu).toContain('entretien inachevé')
   })
 
+  it("n'exporte pas un entretien commencé sans aucune réponse", async () => {
+    const projet = (await creerProjet(base.db, { titre: 'Silence', type_demande: 'amelioration' })).id
+    const q = await enregistrerQuestionnaire(base.db, {
+      projet_id: projet, public_vise: 'Chauffeurs', mode: 'hybride',
+      contenu: { questions: [{ id: 'q1', type: 'texte', libelle: 'Comment ?', objectif: 'o' }] },
+    })
+    await publierQuestionnaire(base.db, q.id, 'https://x.fr')
+    const muet = await generique(q.code, { nom: 'Muet', prenom: 'Paul', poste: '', entreprise: 'CUMA', mail: '' })
+    await tour(muet, 1, 'question', 'q1', 'Comment ?', null)
+    const parle = await generique(q.code, { nom: 'Bavard', prenom: 'Lou', poste: '', entreprise: 'CUMA', mail: '' })
+    await tour(parle, 1, 'question', 'q1', 'Comment ?', { texte: 'Comme ça.' })
+
+    const md = await exporterReponses(base.db, { projet_id: projet, inclure_en_cours: true }, 'md', MAINTENANT)
+    expect(md.contenu).toContain('· 1 entretien\n')
+    expect(md.contenu).toContain('## Lou Bavard')
+    expect(md.contenu).not.toContain('Muet')
+    const csv = await exporterReponses(base.db, { projet_id: projet, inclure_en_cours: true }, 'csv', MAINTENANT)
+    expect(csv.contenu).not.toContain('Muet')
+  })
+
   it('neutralise le texte des répondants comme le corpus, et pas le CSV', async () => {
     const projet = (await creerProjet(base.db, { titre: 'Injection', type_demande: 'amelioration' })).id
     const q = await enregistrerQuestionnaire(base.db, {

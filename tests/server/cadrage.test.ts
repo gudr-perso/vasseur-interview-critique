@@ -3,7 +3,7 @@ import {
   ajouterMessage, ajouterMessageApres, contexteCadrage, dialogueConclu, effacerDialogue, listerMessages, MAX_CONTEXTE, plafondQuestions, questionsPosees,
 } from '../../server/services/cadrage'
 import { enregistrerLogiciel } from '../../server/services/logiciels'
-import { ajouterDocument, creerProjet, modifierProjet } from '../../server/services/projets'
+import { ajouterDocument, creerProjet, modifierProjet, supprimerDocument } from '../../server/services/projets'
 import { enregistrerQuestionnaire, publierQuestionnaire } from '../../server/services/questionnaires'
 import { creerRepondantGenerique, lireRepondantParJeton } from '../../server/services/repondants'
 import { LIMITES } from '../../shared/interviews'
@@ -220,25 +220,32 @@ describe('contexteCadrage', () => {
 
     const { texte, tronquee } = await contexteCadrage(base.db, projet.id)
     expect(tronquee).toBe(true)
-    const budget = MAX_CONTEXTE - Array.from(entete).length
-    const garde = (n: number) => Math.floor(n * budget / 400_000)
-    expect(texte).toContain(`*(document tronqué : ${garde(200_000)} caractères sur 200000)*`)
-    expect(texte).toContain(`*(document tronqué : ${garde(100_000)} caractères sur 100000)*`)
-    expect(texte.match(/document tronqué/g)).toHaveLength(3)
+    expect(texte.startsWith(entete)).toBe(true)
+    // Le contexte entier, titres et mentions compris, tient dans MAX_CONTEXTE caractères, à quelques-uns près.
+    expect(Array.from(texte).length).toBeLessThanOrEqual(MAX_CONTEXTE)
+    expect(Array.from(texte).length).toBeGreaterThan(MAX_CONTEXTE - 100)
+    const mentions = [...texte.matchAll(/document tronqué : (\d+) caractères sur (\d+)/g)]
+    expect(mentions.map(m => Number(m[2]))).toEqual([200_000, 100_000, 100_000])
+    // Chaque document est réduit dans la même proportion.
+    const [gros, emojis, court] = mentions.map(m => Number(m[1]))
+    expect(emojis).toBe(court)
+    expect(Math.abs(gros - 2 * court)).toBeLessThanOrEqual(1)
 
     // Le texte gardé a exactement le nombre de caractères annoncé, et aucune émoticône n'est coupée.
-    expect(texte).toContain('😀'.repeat(garde(100_000)) + '\n*(')
+    expect(texte).toContain('😀'.repeat(emojis) + '\n*(')
     expect(texte).not.toMatch(/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/)
-    expect(Array.from(texte.split('### Gros\n')[1].split('\n')[0])).toHaveLength(garde(200_000))
-    // Le contexte entier tient dans le budget (hors titres et mentions de documents).
-    const mentions = texte.length - texte.replace(/\n\n### [^\n]+\n|\n\*\(document tronqué[^\n]*\n?/g, '').length
-    expect(Array.from(texte).length - mentions).toBeLessThanOrEqual(MAX_CONTEXTE + 40)
+    expect(Array.from(texte.split('### Gros\n')[1].split('\n')[0])).toHaveLength(gros)
   })
 
   it('ne tronque rien jusqu\'à 300 000 caractères', async () => {
     const projet = await creerProjet(base.db, { titre: 'Juste', type_demande: 'amelioration' })
-    const entete = (await contexteCadrage(base.db, projet.id)).texte.replace(/\n$/, '')
-    const reste = MAX_CONTEXTE - Array.from(entete).length
+    // Place laissée aux documents : MAX_CONTEXTE moins tout le reste (en-tête, titres des deux documents).
+    const mesure = [
+      await ajouterDocument(base.db, projet.id, { nom: 'Plein', contenu: 'c' }),
+      await ajouterDocument(base.db, projet.id, { nom: 'Reste', contenu: 'e' }),
+    ]
+    const reste = MAX_CONTEXTE - (Array.from((await contexteCadrage(base.db, projet.id)).texte).length - 2)
+    for (const d of mesure) await supprimerDocument(base.db, d.id)
     await ajouterDocument(base.db, projet.id, { nom: 'Plein', contenu: 'c'.repeat(150_000) })
     await ajouterDocument(base.db, projet.id, { nom: 'Reste', contenu: 'e'.repeat(reste - 150_000) })
     const { texte, tronquee } = await contexteCadrage(base.db, projet.id)
@@ -246,6 +253,7 @@ describe('contexteCadrage', () => {
     expect(texte).not.toContain('tronqué')
     expect(texte).toContain('c'.repeat(150_000))
     expect(texte).toContain('e'.repeat(reste - 150_000))
+    expect(Array.from(texte).length).toBe(MAX_CONTEXTE)
     await ajouterDocument(base.db, projet.id, { nom: 'Un de plus', contenu: 'd' })
     expect((await contexteCadrage(base.db, projet.id)).tronquee).toBe(true)
   })

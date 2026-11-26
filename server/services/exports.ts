@@ -1,7 +1,7 @@
 import { libellesQuestionnaires } from '../../shared/interviews'
 import { reponseEnTexte, type Reponse } from '../../shared/repondants'
 import { ErreurMetier } from '../erreurs'
-import { champDeTitre, rendreEntretien, surUneLigne, type LigneTour } from './corpus'
+import { aRepondu, champDeTitre, grouperParRepondant, rendreEntretien, surUneLigne, type LigneTour } from './corpus'
 import { lireProjet } from './projets'
 import { lireQuestionnaire } from './questionnaires'
 
@@ -118,16 +118,15 @@ export async function exporterReponses(
      WHERE q.projet_id = ?1 AND (?2 IS NULL OR q.id = ?2)
      ORDER BY q.cree_le, q.id, r.commence_le, r.id`,
   ).bind(projet.id, demande.questionnaire_id ?? null).all<LigneEntretien>()
-  const retenus = repondants.filter(r => statuts.includes(r.statut))
-
   const { results: lignes } = await db.prepare(
     `SELECT t.repondant_id, t.ordre, t.type, t.question_id, t.question, t.reponse, t.cree_le
      FROM tours t JOIN repondants r ON r.id = t.repondant_id JOIN questionnaires q ON q.id = r.questionnaire_id
      WHERE q.projet_id = ?1 AND (?2 IS NULL OR q.id = ?2)
      ORDER BY t.repondant_id, t.ordre`,
   ).bind(projet.id, demande.questionnaire_id ?? null).all<LigneTourExport>()
-  const tours = new Map<string, LigneTourExport[]>()
-  for (const ligne of lignes) tours.set(ligne.repondant_id, [...(tours.get(ligne.repondant_id) ?? []), ligne])
+  const tours = grouperParRepondant(lignes)
+  // Comme le corpus : un entretien commencé sans aucune réponse n'a rien à exporter.
+  const retenus = repondants.filter(r => statuts.includes(r.statut) && aRepondu(tours.get(r.id)))
 
   const date = maintenant.toISOString().slice(0, 10)
   const base = questionnaire ? questionnaire.public_vise : projet.titre
