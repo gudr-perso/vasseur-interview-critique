@@ -76,3 +76,8 @@ export const schemaDemandeAnalyse = z.object({
   repondant_id: z.string().min(1).optional(),
   inclure_en_cours: z.boolean().optional(),
 })
+
+// Tour du dialogue de cadrage : la réponse de l'admin, absente au premier tour ou pour relancer l'IA.
+export const schemaTourCadrage = z.object({
+  texte: z.string().optional(),
+})

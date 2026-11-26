@@ -7,7 +7,7 @@ But : comprendre assez bien la demande pour écrire ensuite les questions à pos
 
 ## Avant de poser une question
 
-Lis le projet avec lire_projet : description, logiciels concernés et leur fiche de contexte, liste des documents joints (nom et taille, sans le contenu). Lis ensuite les documents utiles avec lire_document, par morceaux de 20 000 caractères au plus : passe la valeur de « suite » dans « debut » tant qu'elle n'est pas nulle. Ne redemande jamais ce qui s'y trouve déjà.
+Lis le projet : description, logiciels concernés et leur fiche de contexte, note de cadrage s'il y en a déjà une, documents joints. Ne redemande jamais ce qui s'y trouve déjà.
 
 ## Profondeur selon le type de demande
 
@@ -40,13 +40,17 @@ Pour une evolution_simple, les points 1, 2 et 6 suffisent.
 
 Rédige la note en Markdown, avec ces titres dans cet ordre : Objectif, Publics à interroger, Existant, Contraintes, Hors périmètre, Hypothèses à vérifier, Points encore ouverts. Écris des faits et des phrases complètes ; laisse une rubrique vide plutôt que de la remplir avec des suppositions, et range sous « Points encore ouverts » ce que le porteur n'a pas su dire.
 
-Montre la note au porteur, corrige-la selon ses remarques, puis enregistre-la avec modifier_projet (champ note_cadrage). Si les documents joints sont longs, enregistre aussi un resume_contexte d'une vingtaine de lignes : il servira de contexte à chaque entretien à la place des documents complets.
+Le porteur relit la note et la corrige avant qu'elle soit enregistrée. Si les documents joints sont longs, un résumé de contexte (resume_contexte) d'une vingtaine de lignes, tiré des documents et de la description, servira de contexte à chaque entretien à la place des documents complets.
+
+## Avec les outils
+
+Lis le projet avec lire_projet : description, logiciels concernés et leur fiche de contexte, liste des documents joints (nom et taille, sans le contenu). Lis ensuite les documents utiles avec lire_document, par morceaux de 20 000 caractères au plus : passe la valeur de « suite » dans « debut » tant qu'elle n'est pas nulle. Pose les questions dans la conversation. Montre la note au porteur, corrige-la selon ses remarques, puis enregistre-la avec modifier_projet (champ note_cadrage) ; enregistre de la même façon le resume_contexte s'il y a lieu.
 
 Étape suivante : lire_guide avec l'étape « questionnaire ».`
 
 const QUESTIONNAIRE = `# Guide de rédaction d'un questionnaire
 
-But : à partir de la note de cadrage, écrire ce qui sera demandé aux utilisateurs. Relis le projet avec lire_projet avant de commencer, et lis les documents utiles avec lire_document (la liste donne leur nom et leur taille, pas leur contenu). Si la note de cadrage est vide, fais d'abord le cadrage.
+But : à partir de la note de cadrage, écrire ce qui sera demandé aux utilisateurs. Relis le projet avant de commencer, documents utiles compris. Si la note de cadrage est vide, fais d'abord le cadrage.
 
 ## Un questionnaire par public
 
@@ -104,12 +108,16 @@ De 3 à 6 thèmes en général, 12 au plus. La question d'ouverture (500 caract�
 - tours_max : de 1 à 30. En hybride, nombre total de relances, 12 par défaut ; en entretien, nombre de questions posées, 15 par défaut.
 - introduction : 2 000 caractères au plus. public_vise : 200 caractères au plus.
 
-Quand tu remplaces un brouillon, ces réglages omis gardent leur valeur actuelle ; seul tours_max reprend le défaut du nouveau mode si le mode change.
+## Relecture et publication
 
-## Enregistrer et publier
+Un questionnaire est d'abord enregistré en brouillon : le porteur du projet le relit et le corrige. Il n'est publié que lorsque le porteur le valide explicitement, et jamais de ta propre initiative : une fois publié, il ne peut plus être remplacé.
+
+## Avec les outils
+
+Relis le projet avec lire_projet avant de commencer, et lis les documents utiles avec lire_document (la liste donne leur nom et leur taille, pas leur contenu).
 
 1. Montre le questionnaire au porteur du projet et corrige-le selon ses remarques.
-2. Enregistre-le avec enregistrer_questionnaire : il reste en brouillon, modifiable en repassant son identifiant.
+2. Enregistre-le avec enregistrer_questionnaire : il reste en brouillon, modifiable en repassant son identifiant. Quand tu remplaces un brouillon, les réglages omis gardent leur valeur actuelle ; seul tours_max reprend le défaut du nouveau mode si le mode change.
 3. Quand le porteur le valide explicitement, publie-le avec publier_questionnaire et donne-lui l'adresse obtenue. Une fois publié, un questionnaire ne peut plus être remplacé : ne publie jamais de ta propre initiative.`
 
 /** Forme des entretiens telle que la produit le corpus (`rendreEntretien`, `lignesDeReponse`) : commune aux trois guides d'analyse. */
@@ -279,4 +287,19 @@ const GUIDES: Record<EtapeGuide, string> = {
 
 export function lireGuide(etape: EtapeGuide): string {
   return GUIDES[etape]
+}
+
+const SECTION_OUTILS = '\n## Avec les outils'
+
+/**
+ * Guide de l'étape sans sa dernière section, « Avec les outils » : elle décrit les outils MCP, que les appels à
+ * l'IA par l'API (analyses, cadrage, questionnaires) n'ont pas. La méthode reste celle que Claude suit via le MCP.
+ */
+export function consigneSansOutils(etape: EtapeGuide): string {
+  const guide = lireGuide(etape)
+  const position = guide.lastIndexOf(SECTION_OUTILS)
+  if (position < 0 || guide.indexOf('\n## ', position + 1) >= 0) {
+    throw new Error(`Le guide « ${etape} » doit finir par la section « Avec les outils ».`)
+  }
+  return guide.slice(0, position).trimEnd()
 }

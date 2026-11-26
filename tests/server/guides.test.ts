@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ETAPES_GUIDE, lireGuide } from '../../server/guides'
+import { consigneSansOutils, ETAPES_GUIDE, lireGuide } from '../../server/guides'
 
 const ETAPES_ANALYSE = ['fiche_repondant', 'synthese', 'expression_besoin'] as const
 
@@ -34,6 +34,48 @@ describe('guides', () => {
       'lettres, chiffres, tiret et souligné', '500 caractères', '200 caractères',
     ]) {
       expect(guide, borne).toContain(borne)
+    }
+  })
+})
+
+const OUTILS = [
+  'lire_projet', 'lire_document', 'modifier_projet', 'lire_guide', 'enregistrer_questionnaire', 'publier_questionnaire',
+  'lire_questionnaire', 'lire_reponses', 'lire_entretien', 'enregistrer_analyse', 'lister_repondants', 'lister_analyses', 'lire_analyse',
+]
+
+describe('section propre aux outils', () => {
+  it('chaque guide finit par « Avec les outils », et la méthode qui la précède ne nomme aucun outil', () => {
+    for (const etape of ETAPES_GUIDE) {
+      const guide = lireGuide(etape)
+      const section = guide.indexOf('## Avec les outils')
+      expect(section, etape).toBeGreaterThan(guide.length / 2)
+      expect(guide.indexOf('## ', section + 1), etape).toBe(-1)
+      const methode = guide.slice(0, section)
+      for (const outil of OUTILS) expect(methode, `${etape} : ${outil}`).not.toContain(outil)
+    }
+  })
+
+  it('consigneSansOutils rend la méthode seule, telle quelle', () => {
+    for (const etape of ETAPES_GUIDE) {
+      const guide = lireGuide(etape)
+      const consigne = consigneSansOutils(etape)
+      expect(guide.startsWith(consigne), etape).toBe(true)
+      expect(consigne, etape).not.toContain('Avec les outils')
+      expect(consigne.trimEnd(), etape).toBe(consigne)
+      expect(guide.slice(consigne.length).trimStart().startsWith('## Avec les outils'), etape).toBe(true)
+    }
+  })
+
+  it('la méthode du cadrage et du questionnaire garde ses règles sans les outils', () => {
+    const cadrage = consigneSansOutils('cadrage')
+    for (const repere of [
+      'une seule question à la fois', 'Ne redemande jamais', 'evolution_simple',
+      'Objectif, Publics à interroger, Existant, Contraintes, Hors périmètre, Hypothèses à vérifier, Points encore ouverts',
+      'resume_contexte', "d'une vingtaine de lignes",
+    ]) expect(cadrage, repere).toContain(repere)
+    const questionnaire = consigneSansOutils('questionnaire')
+    for (const repere of ['"questions"', '"question_ouverture"', '40 questions au plus', '12 au plus', 'brouillon', 'jamais de ta propre initiative']) {
+      expect(questionnaire, repere).toContain(repere)
     }
   })
 })

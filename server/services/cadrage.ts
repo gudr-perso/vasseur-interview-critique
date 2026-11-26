@@ -1,3 +1,4 @@
+import type { MessageCadrage, RoleCadrage, TypeMessageCadrage } from '../../shared/cadrage'
 import type { TypeDemande } from '../../shared/interviews'
 import { ErreurMetier } from '../erreurs'
 import { maintenantIso, nouvelId } from '../ids'
@@ -6,18 +7,7 @@ import { TYPES_DEMANDE_LIBELLES } from './corpus'
 import { estInvisible, LIMITES, verifierLongueur } from './limites'
 import { lireProjet } from './projets'
 
-export type RoleCadrage = 'ia' | 'admin'
-
-/** Nature d'un message : question ou conclusion de l'IA, réponse de l'admin. */
-export type TypeMessageCadrage = 'question' | 'reponse' | 'conclusion'
-
-export interface MessageCadrage {
-  id: string
-  role: RoleCadrage
-  type: TypeMessageCadrage
-  contenu: string
-  cree_le: string
-}
+export type { MessageCadrage, RoleCadrage, TypeMessageCadrage }
 
 /** Auteur d'un message d'après sa nature : seule une réponse vient de l'admin. */
 export function roleDuType(type: TypeMessageCadrage): RoleCadrage {

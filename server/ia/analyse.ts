@@ -1,15 +1,15 @@
-import Anthropic from '@anthropic-ai/sdk'
 import { LIMITES_ANALYSE, type EnteteFluxAnalyse, type SuccesAnalyse, type TypeAnalyse } from '../../shared/analyses'
 import { lireCorps, parametre } from '../api'
 import type { Env } from '../env'
 import { ErreurMetier } from '../erreurs'
-import { lireGuide } from '../guides'
+import { consigneSansOutils } from '../guides'
 import { erreur } from '../http'
 import { schemaDemandeAnalyse } from '../schemas'
 import { enregistrerAnalyse } from '../services/analyses'
 import { construireCorpus, enteteAnalyse } from '../services/corpus'
 import { lireProjet } from '../services/projets'
 import { caracteres } from '../texte'
+import { genererTexte, type FinTexte, type GenerationTexte } from './appel'
 import { repondreEnFlux, type ReglagesFlux } from './flux'
 import { ErreurIa } from './types'
 
@@ -17,15 +17,6 @@ import { ErreurIa } from './types'
 
 /** Une synthèse d'un projet entier tient largement dans cette borne ; au-delà, la réponse est enregistrée tronquée. */
 export const JETONS_MAX_ANALYSE = 32_000
-/**
- * Délai laissé à l'API pour commencer à répondre. Le SDK ne l'applique que jusqu'à l'arrivée des en-têtes :
- * une fois le flux ouvert, seule la durée maximale ci-dessous le borne.
- */
-const DELAI_REPONSE_MS = 5 * 60_000
-/** Une analyse prend une à trois minutes ; au-delà de cette durée, le flux est abandonné. */
-const DUREE_MAX_MS = 10 * 60_000
-/** Le SDK ne refait un essai qu'avant le début du flux (erreur de connexion, 429, 5xx) ; jamais en cours de texte. */
-const NOUVEAUX_ESSAIS_AVANT_FLUX = 1
 
 export interface OptionsAnalyse {
   cleApi: string
@@ -37,119 +28,35 @@ export interface OptionsAnalyse {
   fetch?: typeof globalThis.fetch
 }
 
-export interface FinAnalyse {
-  texte: string
-  /** Longueur maximale atteinte : le texte s'arrête en cours de route. */
-  tronquee: boolean
-  /** Le modèle a refusé de produire l'analyse. */
-  refusee: boolean
-}
-
-/** Morceaux de texte au fil de l'eau ; `fin()` se lit une fois le parcours terminé. */
-export interface GenerationAnalyse extends AsyncIterable<string> {
-  fin(): Promise<FinAnalyse>
-}
-
+export type FinAnalyse = FinTexte
+export type GenerationAnalyse = GenerationTexte
 export type GenerateurAnalyse = (options: OptionsAnalyse) => GenerationAnalyse
 
-function refusEffort(e: unknown): boolean {
-  return e instanceof Anthropic.BadRequestError && /effort/i.test(e.message)
-}
-
-function versErreurIa(e: unknown, dureeDepassee: boolean): ErreurIa {
-  if (e instanceof ErreurIa) return e
-  if (dureeDepassee) return new ErreurIa(`Analyse abandonnée : la génération a dépassé ${DUREE_MAX_MS / 60_000} minutes.`, e)
-  if (e instanceof Anthropic.APIConnectionTimeoutError) {
-    return new ErreurIa(`L'API Anthropic n'a pas commencé à répondre en ${DELAI_REPONSE_MS / 60_000} minutes.`, e)
-  }
-  if (e instanceof Anthropic.APIError && e.status) {
-    return new ErreurIa(`Appel à l'API Anthropic impossible (erreur ${e.status}).`, e)
-  }
-  if (e instanceof Anthropic.APIError) {
-    return new ErreurIa("L'API Anthropic a interrompu la génération. Réessayez dans quelques minutes.", e)
-  }
-  return new ErreurIa("Génération de l'analyse impossible.", e)
-}
-
 /**
- * Analyse produite par l'API Messages, en flux (`messages.stream`). Effort élevé, sans paramètre `thinking`.
+ * Analyse produite par l'API Messages, en flux (module commun `server/ia/appel.ts`). Effort élevé, sans paramètre
+ * `thinking`, consigne en texte simple : les entretiens sont dans le message, rien n'est à mettre en cache.
  * Une erreur en cours de route est levée pendant le parcours (ErreurIa) ; le texte déjà transmis n'est pas repris.
  */
 export function genererAnalyse(options: OptionsAnalyse): GenerationAnalyse {
-  const client = new Anthropic({
-    apiKey: options.cleApi, timeout: DELAI_REPONSE_MS, maxRetries: NOUVEAUX_ESSAIS_AVANT_FLUX, fetch: options.fetch,
-  })
-  let tenir!: (fin: FinAnalyse) => void
-  let rompre!: (e: ErreurIa) => void
-  let reglee = false
-  const fin = new Promise<FinAnalyse>((resoudre, rejeter) => {
-    tenir = f => { reglee = true; resoudre(f) }
-    rompre = e => { reglee = true; rejeter(e) }
-  })
-  // Le rejet est aussi levé pendant le parcours : qui ne demande pas fin() n'a pas à le traiter une seconde fois.
-  fin.catch(() => {})
-
-  const ouvrir = (avecEffort: boolean) => client.messages.stream({
-    model: options.modele,
-    max_tokens: JETONS_MAX_ANALYSE,
-    system: options.consigne,
+  return genererTexte({
+    cleApi: options.cleApi,
+    modele: options.modele,
+    consigne: options.consigne,
     messages: [{ role: 'user', content: options.message }],
-    ...(avecEffort ? { output_config: { effort: 'high' as const } } : {}),
+    maxTokens: JETONS_MAX_ANALYSE,
+    effort: 'high',
+    fetch: options.fetch,
+  }, {
+    duree: 'Analyse abandonnée : la génération a dépassé 10 minutes.',
+    impossible: "Génération de l'analyse impossible.",
   })
-
-  async function* morceaux(): AsyncGenerator<string> {
-    let texte = ''
-    let flux: ReturnType<typeof ouvrir> | undefined
-    let dureeDepassee = false
-    const limite = setTimeout(() => { dureeDepassee = true; flux?.abort() }, DUREE_MAX_MS)
-    try {
-      for (const avecEffort of [true, false]) {
-        flux = ouvrir(avecEffort)
-        try {
-          for await (const evenement of flux) {
-            if (evenement.type === 'content_block_delta' && evenement.delta.type === 'text_delta') {
-              texte += evenement.delta.text
-              yield evenement.delta.text
-            }
-          }
-          // Une erreur survenue après le dernier événement lu n'est pas levée par le parcours : finalMessage la lève.
-          const message = await flux.finalMessage()
-          tenir({ texte, tronquee: message.stop_reason === 'max_tokens', refusee: message.stop_reason === 'refusal' })
-          return
-        } catch (e) {
-          // Un modèle plus ancien choisi dans l'admin peut refuser le réglage d'effort : l'appel est refait, rien n'a été transmis.
-          if (avecEffort && texte === '' && refusEffort(e)) continue
-          throw e
-        }
-      }
-    } catch (e) {
-      const erreurIa = versErreurIa(e, dureeDepassee)
-      rompre(erreurIa)
-      throw erreurIa
-    } finally {
-      clearTimeout(limite)
-      if (!reglee) rompre(new ErreurIa('Génération abandonnée avant la fin.'))
-    }
-  }
-
-  return {
-    [Symbol.asyncIterator]: () => morceaux(),
-    fin: () => fin,
-  }
 }
 
 // ─── Consigne et message ─────────────────────────────────────────────────────
 
-const SECTION_OUTILS = '\n## Avec les outils'
-
-/** Guide de l'étape, sans sa dernière section : elle décrit les outils MCP, que l'analyse par l'API n'a pas. */
+/** Guide de l'étape, sans sa section sur les outils MCP, que l'analyse par l'API n'a pas. */
 export function consigneAnalyse(type: TypeAnalyse): string {
-  const guide = lireGuide(type)
-  const position = guide.lastIndexOf(SECTION_OUTILS)
-  if (position < 0 || guide.indexOf('\n## ', position + 1) >= 0) {
-    throw new Error(`Le guide « ${type} » doit finir par la section « Avec les outils ».`)
-  }
-  return guide.slice(0, position).trimEnd()
+  return consigneSansOutils(type)
 }
 
 const DEMANDES: Record<TypeAnalyse, string> = {
