@@ -1,7 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
-import {
-  LIMITES_ANALYSE, ligneDeControle, type ControleFluxAnalyse, type EnteteFluxAnalyse, type TypeAnalyse,
-} from '../../shared/analyses'
+import { LIMITES_ANALYSE, type EnteteFluxAnalyse, type SuccesAnalyse, type TypeAnalyse } from '../../shared/analyses'
 import { lireCorps, parametre } from '../api'
 import type { Env } from '../env'
 import { ErreurMetier } from '../erreurs'
@@ -12,6 +10,7 @@ import { enregistrerAnalyse } from '../services/analyses'
 import { construireCorpus, enteteAnalyse } from '../services/corpus'
 import { lireProjet } from '../services/projets'
 import { caracteres } from '../texte'
+import { repondreEnFlux, type ReglagesFlux } from './flux'
 import { ErreurIa } from './types'
 
 // ─── Génération par l'API ────────────────────────────────────────────────────
@@ -179,10 +178,6 @@ export function messageAnalyse(type: TypeAnalyse, entete: string, corpus: string
 // ─── Route : POST /api/admin/projets/:id/analyses ────────────────────────────
 
 export const MENTION_TRONQUEE = '\n\n*(Analyse interrompue : longueur maximale atteinte.)*'
-/** Sans aucun envoi pendant cette durée, un signal de vie part : Cloudflare coupe une réponse muette vers 100 s. */
-export const INTERVALLE_VIE_MS = 15_000
-/** Au-delà, l'en-tête non lu est signalé dans les journaux : quelque chose retient le flux en route. */
-const DELAI_ENTETE_MS = 10_000
 
 const SANS_CLE = "Analyse par l'API indisponible : clé non configurée. Utilisez Claude avec le connecteur MCP."
 
@@ -190,31 +185,19 @@ function enMilliers(n: number): string {
   return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ' ')
 }
 
+/** Message de la ligne d'erreur (mis sur une ligne par le flux commun). */
 function messageLisible(e: unknown): string {
-  const brut = e instanceof ErreurIa ? e.message
+  return e instanceof ErreurIa ? e.message
     : e instanceof ErreurMetier ? `L'analyse a été produite mais n'a pas pu être enregistrée : ${e.message}`
       : "Erreur interne : l'analyse n'a pas été enregistrée."
-  return brut.replace(/\s+/g, ' ').trim()
-}
-
-/** Séparateur des lignes de contrôle : tiré au hasard, jamais montré au modèle, qui ne peut donc pas l'écrire. */
-function nouveauSeparateur(): string {
-  const octets = crypto.getRandomValues(new Uint8Array(16))
-  return Array.from(octets, o => o.toString(16).padStart(2, '0')).join('')
-}
-
-export interface ReglagesFlux {
-  /** Pour les tests : intervalle du signal de vie. */
-  intervalleVieMs?: number
 }
 
 /**
- * Lance une analyse et répond aussitôt avec un flux (servi en `text/event-stream`) dont le contrat est décrit dans
- * `shared/analyses.ts` : en-tête JSON avec le séparateur, texte au fil de l'eau, lignes de contrôle
- * (signal de vie, puis succès avec l'identifiant de l'analyse enregistrée, ou erreur).
+ * Lance une analyse et répond aussitôt avec le flux commun (`server/ia/flux.ts`, contrat dans `shared/flux.ts`) :
+ * l'en-tête porte le nombre d'entretiens, la ligne de succès l'identifiant de l'analyse enregistrée.
  *
- * La génération ne dépend pas du navigateur : elle est conduite par une tâche confiée à `waitUntil`, qui écrit
- * chaque morceau dans le flux sans jamais attendre qu'il soit lu, et enregistre l'analyse à la fin.
+ * La génération ne dépend pas du navigateur : elle se poursuit si l'onglet est fermé, et l'analyse est
+ * enregistrée à la fin.
  */
 export async function repondreAnalyse(
   contexte: EventContext<Env, 'id', Record<string, unknown>>,
@@ -257,51 +240,21 @@ export async function repondreAnalyse(
     message: messageAnalyse(demande.type, await enteteAnalyse(env.DB, projetId), corpus.texte, corpus.nb_entretiens),
   }
 
-  // Flux d'identité : c'est la forme que le moteur des Workers transmet morceau par morceau. Avec les stratégies
-  // par défaut, la promesse d'une écriture n'est tenue qu'une fois le morceau lu par le moteur, c'est-à-dire
-  // parti vers le navigateur : elle sert à vérifier que l'en-tête est réellement transmis.
-  const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>()
-  const ecrivain = writable.getWriter()
-  const encodeur = new TextEncoder()
-  const separateur = nouveauSeparateur()
-  const intervalleVie = reglages.intervalleVieMs ?? INTERVALLE_VIE_MS
-  let navigateurParti = false
-  let minuterieVie: ReturnType<typeof setTimeout> | undefined
-
-  // Les écritures ne sont jamais attendues par la génération : sans lecteur, les morceaux s'accumulent en mémoire
-  // (32 000 jetons au plus), et la génération continue au rythme de l'API, pas à celui du navigateur.
-  const ecrire = (texte: string): Promise<void> => {
-    if (navigateurParti) return Promise.resolve()
-    armerVie()
-    return ecrivain.write(encodeur.encode(texte)).catch(() => { navigateurParti = true })
-  }
-  const controler = (controle: ControleFluxAnalyse) => ecrire(ligneDeControle(separateur, controle))
-  // Après `intervalleVie` sans aucun envoi, un signal de vie ; il se réarme à chaque envoi.
-  function armerVie() {
-    clearTimeout(minuterieVie)
-    minuterieVie = setTimeout(() => { void controler({ type: 'vie' }) }, intervalleVie)
-  }
-
-  const entete: EnteteFluxAnalyse = { nb_entretiens: corpus.nb_entretiens, controle: separateur }
-  let enteteTransmis = false
-  void ecrire(`${JSON.stringify(entete)}\n`).then(() => { enteteTransmis = !navigateurParti })
-  // Vérification : l'écriture de l'en-tête n'est tenue qu'une fois l'en-tête parti. S'il est retenu, on le saura.
-  const minuterieEntete = setTimeout(() => {
-    if (!enteteTransmis && !navigateurParti) {
-      console.warn(`Analyse par l'API : l'en-tête du flux n'est toujours pas parti après ${DELAI_ENTETE_MS / 1000} s.`)
-    }
-  }, DELAI_ENTETE_MS)
-
-  const produire = async (): Promise<void> => {
-    try {
+  const entete: Omit<EnteteFluxAnalyse, 'controle'> = { nb_entretiens: corpus.nb_entretiens }
+  return repondreEnFlux(contexte, {
+    journal: "Analyse par l'API",
+    entete,
+    messageErreur: messageLisible,
+    reglages,
+    produire: async (ecrire): Promise<SuccesAnalyse> => {
       const generation = generer(options)
-      for await (const morceau of generation) void ecrire(morceau)
+      for await (const morceau of generation) ecrire(morceau)
       const { texte, tronquee, refusee } = await generation.fin()
       if (refusee) throw new ErreurIa("L'IA a refusé de produire cette analyse ; rien n'a été enregistré.")
       if (!texte.trim()) throw new ErreurIa("L'IA n'a produit aucun texte ; rien n'a été enregistré.")
       let contenu = texte
       if (tronquee) {
-        void ecrire(MENTION_TRONQUEE)
+        ecrire(MENTION_TRONQUEE)
         contenu += MENTION_TRONQUEE
       }
       const analyse = await enregistrerAnalyse(env.DB, {
@@ -313,30 +266,7 @@ export async function repondreAnalyse(
         repondant_id: demande.repondant_id,
         nb_entretiens: corpus.nb_entretiens,
       })
-      void controler({ type: 'succes', analyse_id: analyse.id })
-    } catch (e) {
-      console.error("Analyse par l'API :", e instanceof ErreurIa ? e.message : '', e instanceof ErreurIa ? e.cause ?? '' : e)
-      void controler({ type: 'erreur', message: messageLisible(e) })
-    } finally {
-      clearTimeout(minuterieVie)
-      clearTimeout(minuterieEntete)
-      // La fermeture passe après les écritures en attente ; elle échoue sans gravité si le navigateur est parti.
-      ecrivain.close().catch(() => {})
-    }
-  }
-
-  // Sans waitUntil, la fermeture de l'onglet arrêterait le travail en cours ; l'appel garde son récepteur (pas de déstructuration).
-  contexte.waitUntil(produire())
-
-  return new Response(readable, {
-    status: 200,
-    headers: {
-      // `text/event-stream` : Cloudflare (et wrangler en local) compresse un `text/plain` en gzip malgré
-      // `no-transform`, ce qui retient les morceaux jusqu'à la fin ; un flux d'événements ne l'est jamais.
-      // Le corps garde son propre format (voir `shared/analyses.ts`) : le client le lit brut.
-      'Content-Type': 'text/event-stream; charset=utf-8',
-      'Cache-Control': 'no-store, no-transform',
-      'X-Content-Type-Options': 'nosniff',
+      return { analyse_id: analyse.id }
     },
   })
 }

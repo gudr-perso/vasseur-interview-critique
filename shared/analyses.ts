@@ -1,3 +1,5 @@
+import type { ControleFlux, EnteteFlux } from './flux'
+
 export const TYPES_ANALYSE = ['fiche_repondant', 'synthese', 'expression_besoin'] as const
 export type TypeAnalyse = (typeof TYPES_ANALYSE)[number]
 
@@ -39,29 +41,16 @@ export interface PorteeAnalyse {
 
 // ─── Flux de génération (POST /api/admin/projets/:id/analyses) ───────────────
 //
-// 1. Une ligne d'en-tête JSON : {"nb_entretiens":n,"controle":"<séparateur>"}, envoyée dès que le corpus est prêt.
-//    Le séparateur est tiré au hasard à chaque génération et n'est jamais montré au modèle.
-// 2. Le texte de l'analyse, au fil de l'eau, tel que le modèle l'écrit.
-// 3. Des lignes de contrôle, intercalées : "\n<séparateur> <JSON>\n". Le client les retire du texte, saut de ligne
-//    initial et final compris. Un signal de vie ({"type":"vie"}) part après 15 s sans aucun envoi ; le flux se
-//    termine toujours par une ligne de succès ({"type":"succes","analyse_id":"…"}) ou d'erreur
-//    ({"type":"erreur","message":"…"}). Un flux qui s'arrête sans l'une d'elles a été coupé.
+// Contrat commun décrit dans `shared/flux.ts`. L'en-tête porte le nombre d'entretiens analysés :
+// {"nb_entretiens":n,"controle":"<séparateur>"}, envoyé dès que le corpus est prêt ; la ligne de succès porte
+// l'identifiant de l'analyse enregistrée : {"type":"succes","analyse_id":"…"}.
 
-export interface EnteteFluxAnalyse {
-  nb_entretiens: number
-  /** Séparateur des lignes de contrôle. */
-  controle: string
+export { FORME_SEPARATEUR, ligneDeControle } from './flux'
+
+export type EnteteFluxAnalyse = EnteteFlux<{ nb_entretiens: number }>
+
+export interface SuccesAnalyse {
+  analyse_id: string
 }
 
-export type ControleFluxAnalyse =
-  | { type: 'vie' }
-  | { type: 'succes'; analyse_id: string }
-  | { type: 'erreur'; message: string }
-
-/** Forme d'un séparateur : 32 chiffres hexadécimaux. */
-export const FORME_SEPARATEUR = /^[0-9a-f]{32}$/
-
-/** Ligne de contrôle complète, sauts de ligne compris. */
-export function ligneDeControle(separateur: string, controle: ControleFluxAnalyse): string {
-  return `\n${separateur} ${JSON.stringify(controle)}\n`
-}
+export type ControleFluxAnalyse = ControleFlux<SuccesAnalyse>

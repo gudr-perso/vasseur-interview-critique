@@ -1,3 +1,5 @@
+// Contrat propre aux analyses (en-tête avec le nombre d'entretiens, succès avec l'identifiant de l'analyse) ;
+// le mécanisme commun de lecture est testé dans `flux.test.ts`.
 import { describe, expect, it } from 'vitest'
 import { ligneDeControle } from '../../shared/analyses'
 import {
@@ -74,19 +76,6 @@ describe('LecteurFluxAnalyse', () => {
     expect(lire([`${entete(1)}Fin\n${SEP.slice(0, 5)}`]).resultat).toEqual({ nb_entretiens: 1, texte: `Fin\n${SEP.slice(0, 5)}`, erreur: FLUX_INACHEVE })
   })
 
-  it("ne prend pas l'ancienne marque d'erreur, écrite par le modèle, pour un échec", () => {
-    const texte = 'Citation : « \n\n[[ERREUR]] Panne » puis la suite.'
-    const { resultat, etapes } = lire([entete(1), texte.slice(0, 15), texte.slice(15), succes()])
-    expect(resultat).toEqual({ nb_entretiens: 1, texte, analyse_id: 'analyse-1' })
-    expect(etapes.at(-1)).toBe(texte)
-  })
-
-  it('ne reconnaît que le séparateur annoncé : une fausse ligne de contrôle reste du texte', () => {
-    const faux = ligneDeControle('ffffffffffffffffffffffffffffffff', { type: 'erreur', message: 'Inventée' })
-    const { resultat } = lire([entete(1), `Avant${faux}Après`, succes()])
-    expect(resultat).toEqual({ nb_entretiens: 1, texte: `Avant${faux}Après`, analyse_id: 'analyse-1' })
-  })
-
   it('essaie toutes les coupures possibles du flux, sans jamais afficher une ligne de contrôle', () => {
     const complet = `${entete(1)}Avant${vie}Milieu${echec('Panne')}`
     for (let i = 1; i < complet.length; i++) {
@@ -94,20 +83,6 @@ describe('LecteurFluxAnalyse', () => {
       expect(resultat).toEqual({ nb_entretiens: 1, texte: 'AvantMilieu', erreur: 'Panne' })
       expect(etapes.every(etape => !etape.includes(SEP.slice(0, 4)) && !etape.includes('{'))).toBe(true)
     }
-  })
-
-  it('signale une ligne de contrôle illisible', () => {
-    expect(lire([`${entete(1)}Texte\n${SEP} pas du json\n`]).resultat).toEqual({ nb_entretiens: 1, texte: 'Texte', erreur: REPONSE_INATTENDUE })
-  })
-
-  it('décode un caractère accentué coupé entre deux morceaux', () => {
-    const tout = octets(`${entete(1)}Synthèse 🙂 réalisée${succes()}`)
-    const position = tout.indexOf(0xc3) + 1 // au milieu du « è », codé sur deux octets
-    const emoji = tout.indexOf(0xf0) + 2 // au milieu de l'emoji, codé sur quatre octets
-    const { resultat, etapes } = lire([tout.slice(0, position), tout.slice(position, emoji), tout.slice(emoji)])
-    expect(resultat.texte).toBe('Synthèse 🙂 réalisée')
-    expect(etapes[0]).toBe('Synth')
-    expect(etapes.join('')).not.toContain('�')
   })
 })
 
