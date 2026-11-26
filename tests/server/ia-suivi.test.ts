@@ -55,6 +55,16 @@ describe('fetchSuivi', () => {
     await attendre()
   })
 
+  it("rend un flux lisible même si waitUntil lève", async () => {
+    const attendu = await reponseSse(['a', 'b']).text()
+    const api = apiSimulee(() => reponseSse(['a', 'b']))
+    const erreur = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const suivi: Suivi = { db: base.db, poste: 'analyse', projet_id: null, attendre: () => { throw new TypeError('waitUntil absent') } }
+    const r = await fetchSuivi(suivi, api.fetch)(URL_MESSAGES, { method: 'POST', body: corps })
+    expect(await r.text()).toBe(attendu)
+    expect(erreur).toHaveBeenCalledWith("Coût de l'IA", 'waitUntil absent')
+  })
+
   it('garde les compteurs reçus quand le flux se coupe', async () => {
     const api = apiSimulee(() => reponseCoupee('début'))
     const { suivi, attendre } = monter()

@@ -24,7 +24,12 @@ interface Lecture { modele: string | null; usage: Usage }
 
 function planifier(suivi: Suivi, travail: Promise<unknown>): void {
   const protege = travail.catch(e => console.error("Coût de l'IA", e instanceof Error ? e.message : e))
-  suivi.attendre?.(protege)
+  try {
+    suivi.attendre?.(protege)
+  } catch (e) {
+    // `waitUntil` absent ou refusé : la lecture continue sans garantie d'aller au bout, l'appel utile n'en souffre pas.
+    console.error("Coût de l'IA", e instanceof Error ? e.message : e)
+  }
 }
 
 function fusionner(cible: Usage, source: Usage | undefined): void {
