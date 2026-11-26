@@ -1,7 +1,9 @@
 // Formats des flux du cadrage et de la génération des questionnaires (`shared/cadrage.ts`, `shared/generation.ts`),
 // pour le lecteur commun `./flux` : chaque champ reçu est vérifié avant d'être utilisé.
 
-import type { EnteteCadrage, EnteteTourCadrage, SuccesTexteCadrage, SuccesTourCadrage } from '../../shared/cadrage'
+import type {
+  EnteteCadrage, EnteteTourCadrage, MessageCadrage, SuccesTexteCadrage, SuccesTourCadrage, TypeMessageCadrage,
+} from '../../shared/cadrage'
 import type { EnteteGeneration, PublicPropose, SuccesGeneration, SuccesPublics } from '../../shared/generation'
 import { MODES } from '../../shared/interviews'
 import { identifiant, type FormatFlux, type ObjetRecu } from './flux'
@@ -21,9 +23,27 @@ function enteteTour(valeur: ObjetRecu): EnteteTourCadrage | null {
   return base && plafond !== null && posees !== null ? { ...base, plafond, questions_posees: posees } : null
 }
 
+const TYPES_MESSAGE: readonly TypeMessageCadrage[] = ['question', 'reponse', 'conclusion']
+
+function messageCadrage(valeur: unknown): MessageCadrage | null {
+  if (typeof valeur !== 'object' || valeur === null) return null
+  const { id, type, contenu, cree_le: creeLe } = valeur as ObjetRecu
+  const nature = TYPES_MESSAGE.find(t => t === type)
+  if (typeof id !== 'string' || !id || !nature || typeof contenu !== 'string' || typeof creeLe !== 'string') return null
+  return { id, role: nature === 'reponse' ? 'admin' : 'ia', type: nature, contenu, cree_le: creeLe }
+}
+
 function succesTour(valeur: ObjetRecu): SuccesTourCadrage | null {
   const { fin, message } = valeur
-  return typeof fin === 'boolean' && typeof message === 'string' && message.trim() ? { fin, message } : null
+  if (typeof fin !== 'boolean' || typeof message !== 'string' || !message.trim()) return null
+  if (!Array.isArray(valeur.messages) || valeur.messages.length === 0) return null
+  const messages: MessageCadrage[] = []
+  for (const brut of valeur.messages) {
+    const lu = messageCadrage(brut)
+    if (!lu) return null
+    messages.push(lu)
+  }
+  return { fin, message, messages }
 }
 
 function succesTexte(valeur: ObjetRecu): SuccesTexteCadrage | null {

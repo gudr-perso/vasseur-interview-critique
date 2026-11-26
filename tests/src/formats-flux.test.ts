@@ -16,17 +16,23 @@ function lire<C, S>(format: FormatFlux<C, S>, ...morceaux: string[]) {
 describe('FORMAT_TOUR', () => {
   const ENTETE = { plafond: 12, questions_posees: 2, contexte_tronque: false }
 
-  it("lit l'en-tête du tour et la question suivante", () => {
-    expect(lire(FORMAT_TOUR, entete(ENTETE), succes({ fin: false, message: 'Qui utilise cet écran ?' }))).toEqual({
-      entete: ENTETE, texte: '', succes: { fin: false, message: 'Qui utilise cet écran ?' },
-    })
+  const REPONSE = { id: 'm1', role: 'admin', type: 'reponse', contenu: 'Le comptable.', cree_le: '2026-11-26T10:00:00.000Z' }
+  const QUESTION = { id: 'm2', role: 'ia', type: 'question', contenu: 'Qui utilise cet écran ?', cree_le: '2026-11-26T10:00:01.000Z' }
+
+  it("lit l'en-tête du tour, la question suivante et les messages écrits pendant le tour", () => {
+    const charge = { fin: false, message: 'Qui utilise cet écran ?', messages: [REPONSE, QUESTION] }
+    expect(lire(FORMAT_TOUR, entete(ENTETE), succes(charge))).toEqual({ entete: ENTETE, texte: '', succes: charge })
   })
 
-  it('refuse un en-tête incomplet ou une charge sans message', () => {
-    expect(lire(FORMAT_TOUR, entete({ plafond: 12, contexte_tronque: false }), succes({ fin: true, message: 'Fin' })).erreur)
+  it('refuse un en-tête incomplet, une charge sans message ou des messages mal formés', () => {
+    const messages = [QUESTION]
+    expect(lire(FORMAT_TOUR, entete({ plafond: 12, contexte_tronque: false }), succes({ fin: true, message: 'Fin', messages })).erreur)
       .toBe(REPONSE_INATTENDUE)
-    expect(lire(FORMAT_TOUR, entete(ENTETE), succes({ fin: true, message: '  ' })).erreur).toBe(REPONSE_INATTENDUE)
-    expect(lire(FORMAT_TOUR, entete(ENTETE), succes({ fin: 'oui', message: 'Fin' })).erreur).toBe(REPONSE_INATTENDUE)
+    expect(lire(FORMAT_TOUR, entete(ENTETE), succes({ fin: true, message: '  ', messages })).erreur).toBe(REPONSE_INATTENDUE)
+    expect(lire(FORMAT_TOUR, entete(ENTETE), succes({ fin: 'oui', message: 'Fin', messages })).erreur).toBe(REPONSE_INATTENDUE)
+    for (const mauvais of [undefined, [], [{ ...QUESTION, id: '' }], [{ ...QUESTION, type: 'autre' }], [{ ...QUESTION, contenu: 3 }]]) {
+      expect(lire(FORMAT_TOUR, entete(ENTETE), succes({ fin: false, message: 'Q ?', messages: mauvais })).erreur).toBe(REPONSE_INATTENDUE)
+    }
   })
 
   it("signale une réponse coupée avant la fin, avec l'en-tête déjà reçu", () => {

@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import {
-  ajouterMessage, contexteCadrage, dialogueConclu, effacerDialogue, listerMessages, MAX_CONTEXTE, plafondQuestions, questionsPosees,
+  ajouterMessage, ajouterMessageApres, contexteCadrage, dialogueConclu, effacerDialogue, listerMessages, MAX_CONTEXTE, plafondQuestions, questionsPosees,
 } from '../../server/services/cadrage'
 import { enregistrerLogiciel } from '../../server/services/logiciels'
 import { ajouterDocument, creerProjet, modifierProjet } from '../../server/services/projets'
@@ -79,6 +79,43 @@ describe('messages du dialogue', () => {
   })
 })
 
+describe('ajout conditionnel (ajouterMessageApres)', () => {
+  it("n'écrit qu'à la suite du dernier message attendu ; null au premier message", async () => {
+    const id = await nouveauProjet()
+    const q1 = await ajouterMessageApres(base.db, id, 'question', 'Q1 ?', null)
+    expect(q1).not.toBeNull()
+    // Dialogue non vide : un ajout « au premier message » est refusé.
+    expect(await ajouterMessageApres(base.db, id, 'question', 'Autre Q1 ?', null)).toBeNull()
+    const r1 = await ajouterMessageApres(base.db, id, 'reponse', '  R1  ', q1!.id)
+    expect(r1).toMatchObject({ role: 'admin', type: 'reponse', contenu: 'R1' })
+    // Le dernier message n'est plus Q1 : rien n'est écrit.
+    expect(await ajouterMessageApres(base.db, id, 'reponse', 'R1 bis', q1!.id)).toBeNull()
+    expect(await ajouterMessageApres(base.db, id, 'question', 'Q2 ?', r1!.id)).not.toBeNull()
+    expect((await listerMessages(base.db, id)).map(m => m.contenu)).toEqual(['Q1 ?', 'R1', 'Q2 ?'])
+  })
+
+  it('ne regarde que le dialogue du projet, et valide le message comme ajouterMessage', async () => {
+    const a = await nouveauProjet('A')
+    const b = await nouveauProjet('B')
+    const qa = await ajouterMessage(base.db, a, 'question', 'QA ?')
+    expect(await ajouterMessageApres(base.db, b, 'question', 'QB ?', null)).not.toBeNull()
+    expect(await ajouterMessageApres(base.db, b, 'reponse', 'RB', qa.id)).toBeNull()
+    await expect(ajouterMessageApres(base.db, a, 'reponse', '  ', qa.id)).rejects.toThrow(/vide/)
+    await expect(ajouterMessageApres(base.db, 'inconnu', 'reponse', 'R', null)).rejects.toMatchObject({ statut: 404 })
+  })
+
+  it('deux ajouts simultanés à la suite du même message : un seul aboutit', async () => {
+    const id = await nouveauProjet()
+    const q = await ajouterMessage(base.db, id, 'question', 'Q ?')
+    const issues = await Promise.all([
+      ajouterMessageApres(base.db, id, 'reponse', 'Onglet A', q.id),
+      ajouterMessageApres(base.db, id, 'reponse', 'Onglet B', q.id),
+    ])
+    expect(issues.filter(Boolean)).toHaveLength(1)
+    expect(await listerMessages(base.db, id)).toHaveLength(2)
+  })
+})
+
 describe('plafond de questions', () => {
   it('vaut 3, 6 ou 12 selon le type de demande', () => {
     expect(plafondQuestions('evolution_simple')).toBe(3)
@@ -149,6 +186,18 @@ describe('contexteCadrage', () => {
       '',
     ].join('\n'))
     console.log('--- Contexte produit ---\n' + texte)
+  })
+
+  it('omet la note de cadrage sur demande (contexte du résumé), sans rien changer d\'autre', async () => {
+    const projet = await creerProjet(base.db, { titre: 'Sans note', type_demande: 'amelioration', description: 'Demande.' })
+    await modifierProjet(base.db, projet.id, { note_cadrage: '## Hypothèses à vérifier\nREPERE-NOTE-INTERNE' })
+    await ajouterDocument(base.db, projet.id, { nom: 'Doc', contenu: 'Contenu du document.' })
+    const avec = await contexteCadrage(base.db, projet.id)
+    const sans = await contexteCadrage(base.db, projet.id, { avecNote: false })
+    expect(avec.texte).toContain('REPERE-NOTE-INTERNE')
+    expect(sans.texte).not.toContain('REPERE-NOTE-INTERNE')
+    expect(sans.texte).not.toContain('Note de cadrage')
+    expect(sans.texte).toBe(avec.texte.replace('\n## Note de cadrage existante\n## Hypothèses à vérifier\nREPERE-NOTE-INTERNE\n', ''))
   })
 
   it('omet la note de cadrage vide ou blanche, la description vide et les sections sans objet', async () => {

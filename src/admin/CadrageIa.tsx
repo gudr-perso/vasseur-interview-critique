@@ -8,14 +8,16 @@ import { useAppelFlux } from './appelFlux'
 import { CLASSE_AIDE, ChampZone } from './champs'
 import { Alerte, messageErreur, useAction, useChargement } from './commun'
 import {
-  boutonPropose, consigneDialogue, libelleCompteur, peutTerminer, phaseDialogue, reponseEnregistree,
-  type BoutonDialogue, type PhaseDialogue,
+  boutonPropose, completerDialogue, consigneDialogue, dernierVu, libelleCompteur, peutTerminer, phaseDialogue,
+  reponseEnregistree, zoneReponseVisible, type BoutonDialogue, type PhaseDialogue,
 } from './dialogueCadrage'
 import { AppelEnCours, CLASSE_ETAT, ContexteTronque } from './EtatAppel'
 import { libelleSource } from './libelles'
 import { useSaisieNonEnregistree } from './saisies'
 
 const AVERTISSEMENT_TOUR = "Gardez cette page ouverte jusqu'à la réponse de l'IA : sinon, elle risque d'être perdue."
+const REPONSE_NON_ENVOYEE =
+  "Cette réponse n'a pas été envoyée : le dialogue a changé entre-temps. Copiez-la si vous voulez la garder, puis effacez-la."
 
 /** Rappel du modèle, près du bouton qui appelle l'IA. */
 export function RappelModele({ modele }: { modele: string }) {
@@ -145,18 +147,26 @@ function Dialogue({ projetId, modele, dialogue, noteEnCours, onRedigerNote, onMa
   const bouton = boutonPropose(phase, echec)
   const occupe = tour.enCours || recommencer.enCours || noteEnCours
 
-  /** Un tour ; le dialogue est relu ensuite dans tous les cas : c'est le serveur qui dit ce qui a été enregistré. */
+  /**
+   * Un tour, envoyé à la suite du dernier message affiché (un fil périmé est refusé par le serveur). Le dialogue est
+   * relu ensuite dans tous les cas : c'est le serveur qui dit ce qui a été enregistré.
+   */
   const jouerTour = async (texte?: string) => {
     setErreurSaisie('')
     setErreurMaj('')
-    const fin = await tour.lancer((surTexte, signal) => api.cadrage.tour(projetId, texte, surTexte, signal))
+    const avant = dialogue
+    const demande = { texte, apres: dernierVu(avant.messages) }
+    const fin = await tour.lancer((surTexte, signal) => api.cadrage.tour(projetId, demande, surTexte, signal))
     if (!fin) return
     let maj: EtatDialogue | null = null
     try {
       maj = await api.cadrage.lire(projetId)
       onMaj(maj)
     } catch (e) {
-      setErreurMaj(`Le dialogue n'a pas pu être actualisé : ${messageErreur(e)}`)
+      // Tour réussi mais fil non relu : il est complété avec ce que le tour a écrit, pour que la question affichée
+      // soit bien celle à laquelle la prochaine réponse s'adresse.
+      if (fin.phase === 'terminee') onMaj(completerDialogue(avant, fin.succes.messages))
+      else setErreurMaj(`Le dialogue n'a pas pu être actualisé : ${messageErreur(e)}`)
     }
     // L'en-tête du flux part une fois la réponse enregistrée : alors seulement, elle peut quitter la zone.
     if (texte !== undefined && (fin.entete !== null || (maj && reponseEnregistree(maj.messages, texte)))) setReponse('')
@@ -210,12 +220,18 @@ function Dialogue({ projetId, modele, dialogue, noteEnCours, onRedigerNote, onMa
         </div>
       )}
       {'entete' in tour.etat && <ContexteTronque tronque={tour.etat.entete?.contexte_tronque ?? false} />}
-      {phase === 'question' && (
+      {zoneReponseVisible(phase, reponse) && (
         <ChampZone
           id="cadrage-reponse" libelle="Votre réponse" valeur={reponse} lignes={4} className="mt-3"
           onChange={v => { setReponse(v); setErreurSaisie('') }} maxLength={LIMITES.message_cadrage_admin}
           disabled={tour.enCours} erreur={erreurSaisie || undefined}
+          aide={phase === 'question' ? undefined : REPONSE_NON_ENVOYEE}
         />
+      )}
+      {phase !== 'question' && reponse.trim() !== '' && (
+        <Button type="button" variant="ghost" size="sm" className="mt-1" onClick={() => setReponse('')} disabled={tour.enCours}>
+          Effacer cette réponse
+        </Button>
       )}
       {consigne && <p className="text-[0.84rem] leading-snug mt-2 mb-3">{consigne}</p>}
       <BoutonsDialogue

@@ -36,10 +36,25 @@ export interface EnteteTourCadrage extends EnteteCadrage {
   questions_posees: number
 }
 
+/**
+ * Corps de `POST …/cadrage/tour`. `apres` : identifiant du dernier message que le client a vu (`null` : dialogue
+ * vide). Le tour est refusé (409) si ce n'est plus le dernier message enregistré.
+ */
+export interface DemandeTourCadrage {
+  /** Réponse de l'admin ; absente pour la première question ou pour relancer l'IA après un échec. */
+  texte?: string
+  apres: string | null
+}
+
+/** Message d'erreur d'un tour refusé ou abandonné parce qu'un autre tour a écrit dans le dialogue entre-temps. */
+export const DIALOGUE_CHANGE = 'Le dialogue a changé entre-temps : il a été rechargé.'
+
 /** Succès d'un tour : la question suivante, ou (`fin`) la phrase qui conclut. Aucun texte au fil de l'eau. */
 export interface SuccesTourCadrage {
   fin: boolean
   message: string
+  /** Messages écrits pendant ce tour, dans l'ordre : la réponse de l'admin s'il y en a une, puis celui de l'IA. */
+  messages: MessageCadrage[]
 }
 
 /** Succès de `POST …/cadrage/note` et `…/cadrage/resume` : le texte est passé au fil de l'eau, rien n'est enregistré. */

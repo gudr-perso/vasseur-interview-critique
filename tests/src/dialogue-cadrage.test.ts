@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { TypeMessageCadrage } from '../../shared/cadrage'
 import {
-  boutonPropose, consigneDialogue, libelleCompteur, peutTerminer, phaseDialogue, reponseEnregistree,
+  boutonPropose, completerDialogue, consigneDialogue, dernierVu, libelleCompteur, peutTerminer, phaseDialogue,
+  reponseEnregistree, zoneReponseVisible,
 } from '../../src/admin/dialogueCadrage'
 
 const m = (type: TypeMessageCadrage, contenu = '…') => ({ type, contenu })
@@ -74,5 +75,36 @@ describe('reponseEnregistree', () => {
     expect(reponseEnregistree([m('reponse', 'Oui'), m('question')], 'Oui')).toBe(false)
     expect(reponseEnregistree([m('question'), m('reponse', 'Oui')], 'Non')).toBe(false)
     expect(reponseEnregistree([], 'Oui')).toBe(false)
+  })
+})
+
+describe('completerDialogue, dernierVu, zoneReponseVisible', () => {
+  const msg = (id: string, type: TypeMessageCadrage) => ({
+    id, type, role: type === 'reponse' ? 'admin' as const : 'ia' as const, contenu: id, cree_le: '2026-11-26T10:00:00.000Z',
+  })
+
+  it('complète le fil avec les messages écrits par le tour, compteur et conclusion compris', () => {
+    const etat = { messages: [msg('q1', 'question')], plafond: 3, questions_posees: 1, conclu: false }
+    expect(completerDialogue(etat, [msg('r1', 'reponse'), msg('q2', 'question')])).toEqual({
+      messages: [msg('q1', 'question'), msg('r1', 'reponse'), msg('q2', 'question')], plafond: 3, questions_posees: 2, conclu: false,
+    })
+    const conclu = completerDialogue(etat, [msg('r1', 'reponse'), msg('c', 'conclusion')])
+    expect(conclu).toMatchObject({ questions_posees: 1, conclu: true })
+    // Un message déjà présent n'est pas ajouté deux fois.
+    expect(completerDialogue(etat, [msg('q1', 'question')]).messages).toHaveLength(1)
+  })
+
+  it('donne le dernier message vu, null pour un dialogue vide', () => {
+    expect(dernierVu([])).toBeNull()
+    expect(dernierVu([{ id: 'a' }, { id: 'b' }])).toBe('b')
+  })
+
+  it('garde la zone de réponse visible tant qu\'elle contient du texte', () => {
+    expect(zoneReponseVisible('question', '')).toBe(true)
+    for (const phase of ['vide', 'relance', 'conclu', 'termine'] as const) {
+      expect(zoneReponseVisible(phase, ''), phase).toBe(false)
+      expect(zoneReponseVisible(phase, '  \n'), phase).toBe(false)
+      expect(zoneReponseVisible(phase, 'Réponse tapée'), phase).toBe(true)
+    }
   })
 })

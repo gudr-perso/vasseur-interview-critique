@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import * as cadrage from '../../functions/api/admin/projets/[id]/cadrage/index'
 import * as note from '../../functions/api/admin/projets/[id]/cadrage/note'
 import * as resume from '../../functions/api/admin/projets/[id]/cadrage/resume'
@@ -40,9 +40,15 @@ async function lancer(handler: Handler, id: string, corps?: unknown, cle?: strin
   return { reponse, ctx }
 }
 
-/** Lance un tour avec l'API simulée et lit tout le flux. */
-async function tourAvec(id: string, api: ReturnType<typeof apiSimulee>, corps: unknown = {}) {
-  const { reponse, ctx } = await lancer(avec(repondreTourCadrage, { fetch: api.fetch }), id, corps)
+/** Identifiant du dernier message du dialogue, `null` s'il est vide : ce que le client envoie dans `apres`. */
+async function dernierId(id: string): Promise<string | null> {
+  return (await listerMessages(base.db, id)).at(-1)?.id ?? null
+}
+
+/** Lance un tour avec l'API simulée et lit tout le flux ; `apres` est par défaut le dernier message enregistré. */
+async function tourAvec(id: string, api: ReturnType<typeof apiSimulee>, corps: { texte?: string; apres?: string | null } = {}) {
+  const complet = 'apres' in corps ? corps : { ...corps, apres: await dernierId(id) }
+  const { reponse, ctx } = await lancer(avec(repondreTourCadrage, { fetch: api.fetch }), id, complet)
   expect(reponse.status).toBe(200)
   const flux = analyserFlux<EnteteTourCadrage, SuccesTourCadrage>(await reponse.text())
   await ctx.tache()
@@ -72,7 +78,7 @@ describe('refus avant tout appel', () => {
     const id = await nouveauProjet()
     const api = apiSimulee()
     for (const repondre of [repondreTourCadrage, repondreNoteCadrage, repondreResumeContexte]) {
-      const { reponse } = await lancer(avec(repondre, { fetch: api.fetch }), id, { texte: 'Bonjour' }, '')
+      const { reponse } = await lancer(avec(repondre, { fetch: api.fetch }), id, { texte: 'Bonjour', apres: null }, '')
       expect(reponse.status).toBe(503)
       expect(((await reponse.json()) as { error: { message: string } }).error.message).toMatch(/clé non configurée.*MCP/)
     }
@@ -83,19 +89,19 @@ describe('refus avant tout appel', () => {
   it('répond 404 pour un projet inconnu', async () => {
     const api = apiSimulee()
     for (const repondre of [repondreTourCadrage, repondreNoteCadrage, repondreResumeContexte]) {
-      expect((await lancer(avec(repondre, { fetch: api.fetch }), 'inconnu', {})).reponse.status).toBe(404)
+      expect((await lancer(avec(repondre, { fetch: api.fetch }), 'inconnu', { apres: null })).reponse.status).toBe(404)
     }
     expect(api.appel).not.toHaveBeenCalled()
   })
 
   it("refuse de sauter une question, et une seconde réponse avant celle de l'IA", async () => {
     const id = await nouveauProjet()
-    await ajouterMessage(base.db, id, 'question', 'Qui saisit les temps ?')
+    const q = await ajouterMessage(base.db, id, 'question', 'Qui saisit les temps ?')
     const api = apiSimulee()
-    const sansTexte = await lancer(avec(repondreTourCadrage, { fetch: api.fetch }), id, {})
+    const sansTexte = await lancer(avec(repondreTourCadrage, { fetch: api.fetch }), id, { apres: q.id })
     expect(sansTexte.reponse.status).toBe(400)
-    await ajouterMessage(base.db, id, 'reponse', 'Le comptable.')
-    const deuxieme = await lancer(avec(repondreTourCadrage, { fetch: api.fetch }), id, { texte: 'Et le gérant.' })
+    const r = await ajouterMessage(base.db, id, 'reponse', 'Le comptable.')
+    const deuxieme = await lancer(avec(repondreTourCadrage, { fetch: api.fetch }), id, { texte: 'Et le gérant.', apres: r.id })
     expect(deuxieme.reponse.status).toBe(409)
     expect(api.appel).not.toHaveBeenCalled()
     expect((await listerMessages(base.db, id)).map(m => m.type)).toEqual(['question', 'reponse'])
@@ -104,8 +110,8 @@ describe('refus avant tout appel', () => {
   it('refuse une réponse vide ou trop longue, sans appeler l\'IA', async () => {
     const id = await nouveauProjet()
     const api = apiSimulee()
-    expect((await lancer(avec(repondreTourCadrage, { fetch: api.fetch }), id, { texte: '  ' })).reponse.status).toBe(400)
-    expect((await lancer(avec(repondreTourCadrage, { fetch: api.fetch }), id, { texte: 'x'.repeat(4001) })).reponse.status).toBe(400)
+    expect((await lancer(avec(repondreTourCadrage, { fetch: api.fetch }), id, { texte: '  ', apres: null })).reponse.status).toBe(400)
+    expect((await lancer(avec(repondreTourCadrage, { fetch: api.fetch }), id, { texte: 'x'.repeat(4001), apres: null })).reponse.status).toBe(400)
     expect(api.appel).not.toHaveBeenCalled()
   })
 })
@@ -117,7 +123,7 @@ describe('POST …/cadrage/tour', () => {
     const flux = await tourAvec(id, api)
     expect(flux.entete).toMatchObject({ plafond: 12, questions_posees: 0, contexte_tronque: false })
     expect(flux.texte).toBe('')
-    expect(flux.fin).toEqual({ type: 'succes', fin: false, message: 'Qui fait cette saisie aujourd\'hui, et à quel moment ?' })
+    expect(flux.fin).toMatchObject({ type: 'succes', fin: false, message: 'Qui fait cette saisie aujourd\'hui, et à quel moment ?' })
 
     const [corps] = api.lus()
     expect(corps.model).toBe(MODELE)
@@ -146,7 +152,10 @@ describe('POST …/cadrage/tour', () => {
     await tourAvec(id, api)
     const flux = await tourAvec(id, api, { texte: '  Le comptable, chaque soir.  ' })
     expect(flux.entete).toMatchObject({ plafond: 12, questions_posees: 1 })
-    expect(flux.fin).toEqual({ type: 'succes', fin: false, message: 'Avec quel écran ?' })
+    expect(flux.fin).toMatchObject({ type: 'succes', fin: false, message: 'Avec quel écran ?' })
+    // La charge utile porte les messages écrits pendant ce tour : de quoi compléter le fil si sa relecture échoue.
+    const ecrits = await listerMessages(base.db, id)
+    expect(flux.fin.type === 'succes' && flux.fin.messages).toEqual(ecrits.slice(1))
 
     // Préfixe mis en cache : tout ce qui précède les messages, bloc de contexte et son marqueur compris.
     const [brut1, brut2] = api.corps
@@ -173,13 +182,13 @@ describe('POST …/cadrage/tour', () => {
     const api = apiSimulee(question('Qui saisit ?'), () => reponseJson({ fin: true, message: "J'ai assez d'éléments : le cadrage peut être conclu." }))
     await tourAvec(id, api)
     const flux = await tourAvec(id, api, { texte: 'Le comptable.' })
-    expect(flux.fin).toEqual({ type: 'succes', fin: true, message: "J'ai assez d'éléments : le cadrage peut être conclu." })
+    expect(flux.fin).toMatchObject({ type: 'succes', fin: true, message: "J'ai assez d'éléments : le cadrage peut être conclu." })
 
     const etat = await (cadrage.onRequestGet as unknown as Handler)(contexteRoute(base.db, 'GET', id).valeur)
     expect(await etat.json()).toEqual({
       messages: expect.any(Array), plafond: 6, questions_posees: 1, conclu: true,
     } satisfies Record<keyof EtatDialogue, unknown>)
-    const suite = await lancer(avec(repondreTourCadrage, { fetch: api.fetch }), id, { texte: 'Autre chose ?' })
+    const suite = await lancer(avec(repondreTourCadrage, { fetch: api.fetch }), id, { texte: 'Autre chose ?', apres: await dernierId(id) })
     expect(suite.reponse.status).toBe(409)
     expect(api.appel).toHaveBeenCalledTimes(2)
   })
@@ -193,7 +202,7 @@ describe('POST …/cadrage/tour', () => {
     expect(api.lus()[2].messages.at(-1).content).toContain("Il ne t'en reste qu'une")
     const flux = await tourAvec(id, api, { texte: 'R3' })
     expect(flux.entete).toMatchObject({ plafond: 3, questions_posees: 3 })
-    expect(flux.fin).toEqual({ type: 'succes', fin: true, message: MESSAGE_PLAFOND })
+    expect(flux.fin).toMatchObject({ type: 'succes', fin: true, message: MESSAGE_PLAFOND })
     expect(api.appel).toHaveBeenCalledTimes(3)
     const messages = await listerMessages(base.db, id)
     expect(messages.map(m => m.type)).toEqual(['question', 'reponse', 'question', 'reponse', 'question', 'reponse', 'conclusion'])
@@ -224,7 +233,7 @@ describe('POST …/cadrage/tour', () => {
     const id = await nouveauProjet()
     const api = apiSimulee(() => reponseSse(['Non'], 'refusal'), question('Qui saisit ?'))
     expect((await tourAvec(id, api, { texte: 'Tout est lent.' })).fin.type).toBe('erreur')
-    expect((await tourAvec(id, api, {})).fin).toEqual({ type: 'succes', fin: false, message: 'Qui saisit ?' })
+    expect((await tourAvec(id, api, {})).fin).toMatchObject({ type: 'succes', fin: false, message: 'Qui saisit ?' })
     expect((await listerMessages(base.db, id)).map(m => m.type)).toEqual(['reponse', 'question'])
   })
 
@@ -237,7 +246,127 @@ describe('POST …/cadrage/tour', () => {
   })
 })
 
+describe('POST …/cadrage/tour : tours concurrents', () => {
+  /** IA simulée lente : la réponse attend `liberer()`. */
+  function iaLente(reponse: () => Response) {
+    let liberer!: () => void
+    const attente = new Promise<void>(r => { liberer = r })
+    return { reponse: async () => { await attente; return reponse() }, liberer }
+  }
+
+  const tourBrut = (id: string, api: ReturnType<typeof apiSimulee>, corps: unknown) =>
+    lancer(avec(repondreTourCadrage, { fetch: api.fetch }), id, corps)
+
+  it('refuse un tour envoyé sur un fil périmé (409), sans appeler l\'IA ni rien écrire', async () => {
+    const id = await nouveauProjet()
+    const q1 = await ajouterMessage(base.db, id, 'question', 'Q1 ?')
+    await ajouterMessage(base.db, id, 'reponse', 'R1')
+    await ajouterMessage(base.db, id, 'question', 'Q2 ?')
+    const api = apiSimulee()
+    for (const corps of [{ texte: 'Réponse à Q1, vue dans un vieil onglet', apres: q1.id }, { apres: null }, { texte: 'R', apres: 'inconnu' }]) {
+      const { reponse } = await tourBrut(id, api, corps)
+      expect(reponse.status).toBe(409)
+      expect(((await reponse.json()) as { error: { message: string } }).error.message).toBe('Le dialogue a changé entre-temps : il a été rechargé.')
+    }
+    expect(api.appel).not.toHaveBeenCalled()
+    expect(await listerMessages(base.db, id)).toHaveLength(3)
+  })
+
+  it('deux réponses simultanées à la même question : une seule aboutit, un seul appel, plafond respecté', async () => {
+    const id = await nouveauProjet('evolution_simple')
+    await ajouterMessage(base.db, id, 'question', 'Q1 ?')
+    await ajouterMessage(base.db, id, 'reponse', 'R1')
+    const q2 = await ajouterMessage(base.db, id, 'question', 'Q2 ?')
+    const lente = iaLente(() => reponseJson({ fin: false, message: 'Q3 ?' }))
+    const api = apiSimulee(lente.reponse, question('Q3 bis ?'))
+    const [a, b] = await Promise.all([
+      tourBrut(id, api, { texte: 'R2 depuis l\'onglet A', apres: q2.id }),
+      tourBrut(id, api, { texte: 'R2 depuis l\'onglet B', apres: q2.id }),
+    ])
+    expect([a.reponse.status, b.reponse.status].sort()).toEqual([200, 409])
+    lente.liberer()
+    const gagnant = a.reponse.status === 200 ? a : b
+    const flux = analyserFlux<EnteteTourCadrage, SuccesTourCadrage>(await gagnant.reponse.text())
+    await gagnant.ctx.tache()
+    expect(flux.fin).toMatchObject({ type: 'succes', fin: false, message: 'Q3 ?' })
+    expect(api.appel).toHaveBeenCalledTimes(1)
+    const messages = await listerMessages(base.db, id)
+    expect(messages.map(m => m.type)).toEqual(['question', 'reponse', 'question', 'reponse', 'question'])
+    expect(messages.filter(m => m.type === 'reponse' && m.contenu.startsWith('R2'))).toHaveLength(1)
+  })
+
+  it('deux relances simultanées : seule la première réponse de l\'IA est écrite, la seconde est abandonnée', async () => {
+    const id = await nouveauProjet('evolution_simple')
+    await ajouterMessage(base.db, id, 'question', 'Q1 ?')
+    const r1 = await ajouterMessage(base.db, id, 'reponse', 'R1')
+    const premiere = iaLente(() => reponseJson({ fin: false, message: 'Q2 (premier tour) ?' }))
+    const seconde = iaLente(() => reponseJson({ fin: false, message: 'Q2 (second tour) ?' }))
+    const api = apiSimulee(premiere.reponse, seconde.reponse)
+    const [a, b] = await Promise.all([tourBrut(id, api, { apres: r1.id }), tourBrut(id, api, { apres: r1.id })])
+    expect([a.reponse.status, b.reponse.status]).toEqual([200, 200])
+    // Rien à écrire avant l'appel : les deux tours appellent l'IA, mais un seul message en sort.
+    premiere.liberer()
+    await vi.waitFor(async () => expect(await listerMessages(base.db, id)).toHaveLength(3))
+    seconde.liberer()
+    const fins = await Promise.all([a, b].map(async t => {
+      const flux = analyserFlux<EnteteTourCadrage, SuccesTourCadrage>(await t.reponse.text())
+      await t.ctx.tache()
+      return flux.fin
+    }))
+    expect(fins).toContainEqual(expect.objectContaining({ type: 'succes', message: 'Q2 (premier tour) ?' }))
+    expect(fins).toContainEqual({ type: 'erreur', message: 'Le dialogue a changé entre-temps : il a été rechargé.' })
+    expect(api.appel).toHaveBeenCalledTimes(2)
+    expect((await listerMessages(base.db, id)).map(m => m.contenu)).toEqual(['Q1 ?', 'R1', 'Q2 (premier tour) ?'])
+  })
+
+  it("abandonne la réponse de l'IA si le dialogue a été recommencé pendant le tour", async () => {
+    const id = await nouveauProjet()
+    const q = await ajouterMessage(base.db, id, 'question', 'Q1 ?')
+    const lente = iaLente(() => reponseJson({ fin: false, message: 'Q2 ?' }))
+    const api = apiSimulee(lente.reponse)
+    const { reponse, ctx } = await tourBrut(id, api, { texte: 'R1', apres: q.id })
+    expect(reponse.status).toBe(200)
+    await (cadrage.onRequestDelete as unknown as Handler)(contexteRoute(base.db, 'DELETE', id).valeur)
+    lente.liberer()
+    const flux = analyserFlux<EnteteTourCadrage, SuccesTourCadrage>(await reponse.text())
+    await ctx.tache()
+    expect(flux.fin).toEqual({ type: 'erreur', message: 'Le dialogue a changé entre-temps : il a été rechargé.' })
+    expect(await listerMessages(base.db, id)).toEqual([])
+  })
+
+  it('deux réponses simultanées au plafond : une seule conclusion, sans appel', async () => {
+    const id = await nouveauProjet('evolution_simple')
+    for (const [type, contenu] of [['question', 'Q1 ?'], ['reponse', 'R1'], ['question', 'Q2 ?'], ['reponse', 'R2']] as const) {
+      await ajouterMessage(base.db, id, type, contenu)
+    }
+    const q3 = await ajouterMessage(base.db, id, 'question', 'Q3 ?')
+    const api = apiSimulee()
+    const tours = await Promise.all([tourBrut(id, api, { texte: 'R3 A', apres: q3.id }), tourBrut(id, api, { texte: 'R3 B', apres: q3.id })])
+    for (const t of tours) {
+      if (t.reponse.status === 200) analyserFlux(await t.reponse.text())
+      await t.ctx.tache()
+    }
+    expect(tours.map(t => t.reponse.status).sort()).toEqual([200, 409])
+    expect(api.appel).not.toHaveBeenCalled()
+    expect((await listerMessages(base.db, id)).map(m => m.type).slice(-2)).toEqual(['reponse', 'conclusion'])
+  })
+})
+
 describe('POST …/cadrage/note et …/cadrage/resume', () => {
+  it("n'envoie jamais la note de cadrage pour le résumé de contexte", async () => {
+    const id = await nouveauProjet()
+    const repere = 'REPERE-HYPOTHESE-INTERNE-7f3a'
+    await modifierProjet(base.db, id, { note_cadrage: `## Hypothèses à vérifier\n${repere} : le trésorier pense que la saisie est inutile.` })
+    const api = apiSimulee(() => reponseSse(['Résumé.']))
+    const { reponse, ctx } = await lancer(avec(repondreResumeContexte, { fetch: api.fetch }), id)
+    analyserFlux(await reponse.text())
+    await ctx.tache()
+    expect(api.corps).toHaveLength(1)
+    expect(api.corps[0]).not.toContain(repere)
+    expect(api.corps[0]).not.toContain('Note de cadrage existante')
+    expect(api.lus()[0].system[1].text).toContain('la saisie prend une heure par jour')
+  })
+
   it("rédige la note au fil de l'eau d'après le contexte et le dialogue, sans rien enregistrer", async () => {
     const id = await nouveauProjet()
     await modifierProjet(base.db, id, { note_cadrage: 'Ancienne note.' })

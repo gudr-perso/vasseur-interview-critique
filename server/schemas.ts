@@ -80,6 +80,8 @@ export const schemaDemandeAnalyse = z.object({
 // Tour du dialogue de cadrage : la réponse de l'admin, absente au premier tour ou pour relancer l'IA.
 export const schemaTourCadrage = z.object({
   texte: z.string().optional(),
+  // Dernier message vu par le client (`null` : dialogue vide) : un tour sur un fil périmé est refusé.
+  apres: z.string().nullable(),
 })
 
 // Génération d'un questionnaire par l'IA ; les longueurs sont vérifiées par la route, avant tout appel.

@@ -45,7 +45,8 @@ export async function listerMessages(db: D1Database, projetId: string): Promise<
   return results
 }
 
-export async function ajouterMessage(
+/** Message prêt à écrire, après vérification du projet, du contenu et de sa longueur. */
+async function nouveauMessage(
   db: D1Database, projetId: string, type: TypeMessageCadrage, contenu: string,
 ): Promise<MessageCadrage> {
   const role = roleDuType(type)
@@ -55,10 +56,34 @@ export async function ajouterMessage(
   verifierLongueur(
     texte, role === 'admin' ? LIMITES.message_cadrage_admin : LIMITES.message_cadrage_ia, 'Message trop long',
   )
-  const message: MessageCadrage = { id: nouvelId(), role, type, contenu: texte, cree_le: maintenantIso() }
+  return { id: nouvelId(), role, type, contenu: texte, cree_le: maintenantIso() }
+}
+
+export async function ajouterMessage(
+  db: D1Database, projetId: string, type: TypeMessageCadrage, contenu: string,
+): Promise<MessageCadrage> {
+  const message = await nouveauMessage(db, projetId, type, contenu)
   await db.prepare('INSERT INTO cadrage_messages (id, projet_id, role, type, contenu, cree_le) VALUES (?,?,?,?,?,?)')
-    .bind(message.id, projetId, role, type, texte, message.cree_le).run()
+    .bind(message.id, projetId, message.role, type, message.contenu, message.cree_le).run()
   return message
+}
+
+/**
+ * Ajoute le message seulement si le dernier message du dialogue est toujours `apres` (`null` : dialogue encore vide).
+ * La condition et l'écriture tiennent en une seule requête : deux tours concurrents (deux onglets, une relance
+ * pendant qu'un tour tourne encore) ne peuvent pas écrire tous les deux à la suite du même message.
+ * Renvoie `null`, sans rien écrire, quand le dialogue a changé entre-temps.
+ */
+export async function ajouterMessageApres(
+  db: D1Database, projetId: string, type: TypeMessageCadrage, contenu: string, apres: string | null,
+): Promise<MessageCadrage | null> {
+  const message = await nouveauMessage(db, projetId, type, contenu)
+  const { meta } = await db.prepare(
+    `INSERT INTO cadrage_messages (id, projet_id, role, type, contenu, cree_le)
+     SELECT ?, ?, ?, ?, ?, ?
+     WHERE (SELECT id FROM cadrage_messages WHERE projet_id = ? ORDER BY cree_le DESC, rowid DESC LIMIT 1) IS ?`,
+  ).bind(message.id, projetId, message.role, type, message.contenu, message.cree_le, projetId, apres).run()
+  return meta.changes > 0 ? message : null
 }
 
 export async function effacerDialogue(db: D1Database, projetId: string): Promise<void> {
@@ -75,10 +100,14 @@ function tronquer(texte: string, gardes: number): string {
  * Contexte du projet pour l'IA du cadrage : un travail interne, donc les documents en entier.
  * Aucune donnée de répondant (identité, réponses, entretiens) : seules la description, les fiches des logiciels,
  * la note de cadrage et les documents y figurent.
+ * `avecNote: false` retire la note : c'est le contexte du résumé, destiné à l'IA qui interroge les répondants,
+ * qui ne doit jamais voir la note ni ses hypothèses internes.
  * `tronquee` est vrai quand au moins un document a été raccourci pour tenir dans `MAX_CONTEXTE` caractères
  * (en-tête compris) ; chaque document est alors réduit dans la même proportion et sa mention dit combien est gardé.
  */
-export async function contexteCadrage(db: D1Database, projetId: string): Promise<{ texte: string; tronquee: boolean }> {
+export async function contexteCadrage(
+  db: D1Database, projetId: string, { avecNote = true }: { avecNote?: boolean } = {},
+): Promise<{ texte: string; tronquee: boolean }> {
   const projet = await lireProjet(db, projetId)
   const entete = [`# Projet : ${projet.titre}`, `Type de demande : ${TYPES_DEMANDE_LIBELLES[projet.type_demande]}`]
   if (projet.description) entete.push('', '## Demande', projet.description)
@@ -88,7 +117,7 @@ export async function contexteCadrage(db: D1Database, projetId: string): Promise
       entete.push(`- ${logiciel.nom}${logiciel.contexte ? ` : ${logiciel.contexte}` : ''}`)
     }
   }
-  if (projet.note_cadrage.trim()) entete.push('', '## Note de cadrage existante', projet.note_cadrage)
+  if (avecNote && projet.note_cadrage.trim()) entete.push('', '## Note de cadrage existante', projet.note_cadrage)
   const texteEntete = entete.join('\n')
   if (projet.documents.length === 0) return { texte: texteEntete + '\n', tronquee: false }
 

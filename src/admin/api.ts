@@ -1,6 +1,6 @@
 import type { Analyse, AnalyseResume, SuccesAnalyse, TypeAnalyse } from '../../shared/analyses'
 import type {
-  EnteteCadrage, EnteteTourCadrage, EtatDialogue, SuccesTexteCadrage, SuccesTourCadrage,
+  DemandeTourCadrage, EnteteCadrage, EnteteTourCadrage, EtatDialogue, SuccesTexteCadrage, SuccesTourCadrage,
 } from '../../shared/cadrage'
 import type { EnteteGeneration, SuccesGeneration, SuccesPublics } from '../../shared/generation'
 import type {
@@ -156,10 +156,13 @@ export const api = {
     lire: (projetId: string) => appel<EtatDialogue>('GET', `/projets/${projetId}/cadrage`),
     /** Efface le dialogue ; la note de cadrage est conservée. */
     recommencer: (projetId: string) => appel<void>('DELETE', `/projets/${projetId}/cadrage`),
-    /** Un tour : `texte` est la réponse de l'admin, absent pour la première question ou pour relancer l'IA. */
-    tour: (projetId: string, texte: string | undefined, surTexte: SurTexte<EnteteTourCadrage>, signal?: AbortSignal) =>
+    /**
+     * Un tour : `texte` est la réponse de l'admin, absent pour la première question ou pour relancer l'IA ; `apres`
+     * est le dernier message affiché (`null` : dialogue vide). Un fil périmé est refusé (409).
+     */
+    tour: (projetId: string, demande: DemandeTourCadrage, surTexte: SurTexte<EnteteTourCadrage>, signal?: AbortSignal) =>
       appelEnFlux<EnteteTourCadrage, SuccesTourCadrage>(
-        `/projets/${projetId}/cadrage/tour`, texte === undefined ? {} : { texte }, FORMAT_TOUR, COUPURE_TOUR, surTexte, signal),
+        `/projets/${projetId}/cadrage/tour`, demande, FORMAT_TOUR, COUPURE_TOUR, surTexte, signal),
     /** Note de cadrage au fil de l'eau ; rien n'est enregistré. */
     note: (projetId: string, surTexte: SurTexte<EnteteCadrage>, signal?: AbortSignal) =>
       appelEnFlux<EnteteCadrage, SuccesTexteCadrage>(

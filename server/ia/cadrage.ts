@@ -2,8 +2,9 @@
 // contexte. La méthode est celle du guide « cadrage », que Claude suit aussi via le MCP.
 
 import type Anthropic from '@anthropic-ai/sdk'
-import type {
-  EnteteCadrage, EnteteTourCadrage, EtatDialogue, MessageCadrage, SuccesTexteCadrage, SuccesTourCadrage,
+import {
+  DIALOGUE_CHANGE, type EnteteCadrage, type EnteteTourCadrage, type EtatDialogue, type MessageCadrage,
+  type SuccesTexteCadrage, type SuccesTourCadrage,
 } from '../../shared/cadrage'
 import { LIMITES } from '../../shared/interviews'
 import { lireCorps, parametre } from '../api'
@@ -13,7 +14,7 @@ import { consigneSansOutils } from '../guides'
 import { erreur } from '../http'
 import { schemaTourCadrage } from '../schemas'
 import {
-  ajouterMessage, contexteCadrage, dialogueConclu, listerMessages, plafondQuestions, questionsPosees,
+  ajouterMessageApres, contexteCadrage, dialogueConclu, listerMessages, plafondQuestions, questionsPosees,
 } from '../services/cadrage'
 import { TYPES_DEMANDE_LIBELLES } from '../services/corpus'
 import { lireProjet } from '../services/projets'
@@ -87,7 +88,7 @@ const DEMANDE_NOTE = "Le dialogue de cadrage est terminé. Rédige maintenant la
 const DEMANDE_NOTE_SANS_DIALOGUE = "Aucun dialogue de cadrage n'a eu lieu. Rédige la note de cadrage à partir du contexte du projet seul, avec les titres de la consigne dans leur ordre (Objectif, Publics à interroger, Existant, Contraintes, Hors périmètre, Hypothèses à vérifier, Points encore ouverts) ; range sous « Points encore ouverts » ce que le contexte ne dit pas. Si le contexte contient déjà une note de cadrage, pars d'elle. Écris directement la note, en Markdown, sans préambule ni question."
 
 /** Le résumé sert de contexte à l'IA d'entretien, qui ne doit jamais voir la note (hypothèses internes) : il n'en tient pas compte. */
-const DEMANDE_RESUME = "Rédige le résumé de contexte de ce projet : une vingtaine de lignes en Markdown, tirées de la description, des fiches des logiciels et des documents. Il servira de contexte à l'IA qui mène chaque entretien avec un utilisateur, à la place des documents complets : dis de quoi parle la demande, quels logiciels et quels écrans sont en jeu, et le vocabulaire du métier utile pour comprendre les réponses. N'y reprends ni la note de cadrage ni les hypothèses de l'équipe : l'IA d'entretien ne doit pas orienter les réponses. Écris directement le résumé, sans préambule ni question."
+const DEMANDE_RESUME = "Rédige le résumé de contexte de ce projet : une vingtaine de lignes en Markdown, tirées de la description, des fiches des logiciels et des documents. Il servira de contexte à l'IA qui mène chaque entretien avec un utilisateur, à la place des documents complets : dis de quoi parle la demande, quels logiciels et quels écrans sont en jeu, et le vocabulaire du métier utile pour comprendre les réponses. Le contexte transmis pour ce résumé ne contient volontairement pas la note de cadrage : n'y ajoute aucune hypothèse de l'équipe, car l'IA d'entretien ne doit pas orienter les réponses. Écris directement le résumé, sans préambule ni question."
 
 export function messagesNote(messages: Pick<MessageCadrage, 'role' | 'type' | 'contenu'>[]): Anthropic.MessageParam[] {
   if (messages.length === 0) return [{ role: 'user', content: DEMANDE_NOTE_SANS_DIALOGUE }]
@@ -142,29 +143,46 @@ export async function etatDialogue(db: D1Database, projetId: string): Promise<Et
 }
 
 /**
- * `POST …/cadrage/tour` avec `{ texte? }` : enregistre la réponse de l'admin s'il y en a une, puis la suite de l'IA
- * (question ou conclusion), en flux. Plafond atteint : le serveur conclut lui-même, sans appeler l'IA.
+ * `POST …/cadrage/tour` avec `{ texte?, apres }` : enregistre la réponse de l'admin s'il y en a une, puis la suite de
+ * l'IA (question ou conclusion), en flux. Plafond atteint : le serveur conclut lui-même, sans appeler l'IA.
  * La réponse de l'admin est enregistrée avant l'appel : si l'IA échoue, un tour sans texte la relance.
+ *
+ * Tours concurrents (deux onglets, une relance pendant qu'un tour tourne encore) : `apres` est le dernier message
+ * vu par le client. La réponse de l'admin n'est écrite que s'il est toujours le dernier (sinon 409, sans appel), et
+ * le message de l'IA que si le dernier message est toujours celui du début du tour ; sinon le tour est abandonné
+ * sans rien écrire. Deux relances simultanées appellent donc l'IA deux fois, mais un seul message en sort.
  */
 export async function repondreTourCadrage(contexte: Contexte, options: OptionsAppelIa = {}): Promise<Response> {
   const { request, env, params } = contexte
   const projetId = parametre(params.id)
-  const { texte } = await lireCorps(request, schemaTourCadrage)
+  const { texte, apres } = await lireCorps(request, schemaTourCadrage)
   const cleApi = cleOuRefus(env)
   if (cleApi instanceof Response) return cleApi
 
   const { projet, messages, contexte: ctx } = await preparer(env, projetId)
+  const dernier = messages.at(-1)
+  if ((dernier?.id ?? null) !== apres) throw new ErreurMetier(DIALOGUE_CHANGE, 409)
   if (dialogueConclu(messages)) {
     throw new ErreurMetier('Le cadrage est conclu : rédigez la note, ou recommencez le dialogue.', 409)
   }
-  const dernier = messages.at(-1)
+  const ecrits: MessageCadrage[] = []
   if (texte !== undefined) {
     if (dernier?.type === 'reponse') {
       throw new ErreurMetier("L'IA n'a pas encore répondu à votre dernier message : relancez le tour sans texte.", 409)
     }
-    messages.push(await ajouterMessage(env.DB, projetId, 'reponse', texte))
+    const reponse = await ajouterMessageApres(env.DB, projetId, 'reponse', texte, apres)
+    if (!reponse) throw new ErreurMetier(DIALOGUE_CHANGE, 409)
+    messages.push(reponse)
+    ecrits.push(reponse)
   } else if (dernier?.type === 'question') {
     throw new ErreurMetier("Répondez à la question de l'IA avant de demander la suite.")
+  }
+  /** Dernier message au début du tour : celui de l'IA ne s'écrit qu'à sa suite. */
+  const debut = messages.at(-1)?.id ?? null
+  const ecrireIa = async (type: 'question' | 'conclusion', contenu: string): Promise<SuccesTourCadrage> => {
+    const message = await ajouterMessageApres(env.DB, projetId, type, contenu, debut)
+    if (!message) throw new ErreurMetier(DIALOGUE_CHANGE, 409)
+    return { fin: type === 'conclusion', message: message.contenu, messages: [...ecrits, message] }
   }
 
   const plafond = plafondQuestions(projet.type_demande)
@@ -185,14 +203,10 @@ export async function repondreTourCadrage(contexte: Contexte, options: OptionsAp
     entete,
     reglages: options.reglages,
     produire: async (): Promise<SuccesTourCadrage> => {
-      if (posees >= plafond) {
-        const conclusion = await ajouterMessage(env.DB, projetId, 'conclusion', MESSAGE_PLAFOND)
-        return { fin: true, message: conclusion.contenu }
-      }
+      if (posees >= plafond) return ecrireIa('conclusion', MESSAGE_PLAFOND)
       const { sortie } = await genererStructure(demande, schemaTour)
       if (!sortie.message.trim()) throw new ErreurIa("L'IA n'a produit aucune question.")
-      const enregistre = await ajouterMessage(env.DB, projetId, sortie.fin ? 'conclusion' : 'question', sortie.message)
-      return { fin: sortie.fin, message: enregistre.contenu }
+      return ecrireIa(sortie.fin ? 'conclusion' : 'question', sortie.message)
     },
   })
 }
@@ -237,7 +251,10 @@ export async function repondreNoteCadrage(contexte: Contexte, options: OptionsAp
 export async function repondreResumeContexte(contexte: Contexte, options: OptionsAppelIa = {}): Promise<Response> {
   const cleApi = cleOuRefus(contexte.env)
   if (cleApi instanceof Response) return cleApi
-  const { projet, contexte: ctx } = await preparer(contexte.env, parametre(contexte.params.id))
+  const projetId = parametre(contexte.params.id)
+  const projet = await lireProjet(contexte.env.DB, projetId)
+  // Ni la note, ni le dialogue (qui la prépare) : le résumé est transmis à l'IA qui interroge les répondants.
+  const ctx = await contexteCadrage(contexte.env.DB, projetId, { avecNote: false })
   if (!projet.description.trim() && projet.documents.length === 0) {
     throw new ErreurMetier('Ajoutez une description ou un document avant de demander le résumé de contexte.')
   }

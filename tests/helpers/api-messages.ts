@@ -46,8 +46,11 @@ export function reponseCoupee(premier: string): Response {
   return new Response(evenements.map(sse).join(''), { status: 200, headers: { 'Content-Type': 'text/event-stream' } })
 }
 
-/** `fetch` simulé : chaque appel prend la réponse suivante de la liste ; les corps envoyés sont gardés tels quels. */
-export function apiSimulee(...reponses: (() => Response)[]) {
+/**
+ * `fetch` simulé : chaque appel prend la réponse suivante de la liste ; les corps envoyés sont gardés tels quels.
+ * Une réponse peut se faire attendre (promesse) : de quoi simuler une IA lente.
+ */
+export function apiSimulee(...reponses: (() => Response | Promise<Response>)[]) {
   const corps: string[] = []
   const appel = vi.fn(async (_url: string, init: RequestInit) => {
     corps.push(init.body as string)

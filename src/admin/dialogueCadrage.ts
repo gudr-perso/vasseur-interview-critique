@@ -86,3 +86,31 @@ export function reponseEnregistree(messages: Messages, texte: string): boolean {
   const dernier = messages.at(-1)
   return dernier?.type === 'reponse' && dernier.contenu === texte.trim()
 }
+
+/**
+ * Le dialogue après un tour réussi, d'après les messages que ce tour a écrits (charge utile de succès) : de quoi
+ * garder le fil à jour quand sa relecture échoue. Le serveur n'écrit qu'à la suite du dernier message vu par le
+ * client, donc ces messages suivent exactement `etat.messages`.
+ */
+export function completerDialogue(etat: EtatDialogue, ecrits: readonly MessageCadrage[]): EtatDialogue {
+  const messages = [...etat.messages, ...ecrits.filter(e => !etat.messages.some(m => m.id === e.id))]
+  return {
+    ...etat,
+    messages,
+    questions_posees: messages.filter(m => m.type === 'question').length,
+    conclu: messages.at(-1)?.type === 'conclusion',
+  }
+}
+
+/** Identifiant du dernier message vu, envoyé avec chaque tour (`null` : dialogue vide). */
+export function dernierVu(messages: readonly Pick<MessageCadrage, 'id'>[]): string | null {
+  return messages.at(-1)?.id ?? null
+}
+
+/**
+ * La zone de réponse reste affichée tant qu'elle contient du texte, même si le dialogue a changé entre-temps
+ * (autre onglet, tour refusé) : une réponse tapée n'est jamais cachée ni perdue.
+ */
+export function zoneReponseVisible(phase: PhaseDialogue, reponse: string): boolean {
+  return phase === 'question' || reponse.trim() !== ''
+}
