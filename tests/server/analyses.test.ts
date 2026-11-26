@@ -115,10 +115,26 @@ describe('listerAnalyses', () => {
     ids.repondantId = repondant
   })
 
+  it('distingue dans la portée deux questionnaires de même public', async () => {
+    const projet = (await creerProjet(base.db, { titre: 'Deux publics identiques', type_demande: 'amelioration' })).id
+    const premier = await enregistrerQuestionnaire(base.db, { projet_id: projet, public_vise: 'Gérants', mode: 'hybride', contenu })
+    const second = await enregistrerQuestionnaire(base.db, { projet_id: projet, public_vise: 'Gérants', mode: 'hybride', contenu })
+    await base.db.prepare("UPDATE questionnaires SET cree_le = '2026-11-01T08:00:00.000Z' WHERE id = ?").bind(premier.id).run()
+    await base.db.prepare("UPDATE questionnaires SET cree_le = '2026-11-03T08:00:00.000Z' WHERE id = ?").bind(second.id).run()
+    for (const q of [premier, second]) {
+      await enregistrerAnalyse(base.db, { projet_id: projet, type: 'synthese', contenu: 'x', source: 'mcp', nb_entretiens: 0, questionnaire_id: q.id })
+    }
+    const portees = (await listerAnalyses(base.db, { projet_id: projet })).map(a => a.portee).sort()
+    expect(portees).toEqual([
+      'Questionnaire : Gérants (hybride, brouillon, créé le 01/11/2026)',
+      'Questionnaire : Gérants (hybride, brouillon, créé le 03/11/2026)',
+    ])
+  })
+
   it('classe les plus récentes d\'abord, avec portée lisible, taille en caractères et sans contenu', async () => {
     const liste = await listerAnalyses(base.db, { projet_id: projetListe })
     expect(liste.map(a => a.id)).toEqual([ids.fiche, ids.questionnaire, ids.ancienne])
-    expect(liste.map(a => a.portee)).toEqual(['Répondant : Paul Martin', 'Questionnaire : Gérants', 'Projet entier'])
+    expect(liste.map(a => a.portee)).toEqual(['Répondant : Paul Martin', 'Questionnaire : Gérants (hybride, ouvert)', 'Projet entier'])
     expect(liste.every(a => a.taille === 3)).toBe(true)
     expect(liste[0]).not.toHaveProperty('contenu')
     expect(liste[0]).toMatchObject({ type: 'fiche_repondant', source: 'mcp', nb_entretiens: 1, repondant_id: ids.repondantId })

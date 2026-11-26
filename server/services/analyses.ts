@@ -1,4 +1,5 @@
 import { LIMITES_ANALYSE, TYPES_ANALYSE, type Analyse, type AnalyseResume, type TypeAnalyse } from '../../shared/analyses'
+import { libellesQuestionnaires } from '../../shared/interviews'
 import { ErreurMetier } from '../erreurs'
 import { maintenantIso, nouvelId } from '../ids'
 import { estInvisible, verifierLongueur } from './limites'
@@ -90,15 +91,16 @@ export async function enregistrerAnalyse(db: D1Database, saisie: SaisieAnalyse):
 
 type LigneResume = Omit<AnalyseResume, 'portee'> & { public_vise: string | null; prenom: string | null; nom: string | null }
 
-function libellePortee(ligne: LigneResume): string {
+function libellePortee(ligne: LigneResume, questionnaires: Map<string, string>): string {
   if (ligne.repondant_id) return `Répondant : ${ligne.prenom} ${ligne.nom}`
-  if (ligne.questionnaire_id) return `Questionnaire : ${ligne.public_vise}`
+  if (ligne.questionnaire_id) return `Questionnaire : ${questionnaires.get(ligne.questionnaire_id) ?? ligne.public_vise}`
   return 'Projet entier'
 }
 
 /** Analyses d'un projet, les plus récentes d'abord, sans leur contenu. L'admin y voit les vrais noms. */
 export async function listerAnalyses(db: D1Database, filtre: FiltreAnalyses): Promise<AnalyseResume[]> {
-  await lireProjet(db, filtre.projet_id)
+  const projet = await lireProjet(db, filtre.projet_id)
+  const questionnaires = libellesQuestionnaires(projet.questionnaires)
   const { results } = await db.prepare(
     `SELECT a.id, a.projet_id, a.questionnaire_id, a.repondant_id, a.type, a.source, a.nb_entretiens, a.cree_le,
             LENGTH(a.contenu) AS taille, q.public_vise, r.prenom, r.nom
@@ -114,7 +116,7 @@ export async function listerAnalyses(db: D1Database, filtre: FiltreAnalyses): Pr
     .all<LigneResume>()
   return results.map(({ public_vise, prenom, nom, ...resume }) => ({
     ...resume,
-    portee: libellePortee({ ...resume, public_vise, prenom, nom }),
+    portee: libellePortee({ ...resume, public_vise, prenom, nom }, questionnaires),
   }))
 }
 
@@ -124,6 +126,19 @@ export async function listerAnalysesPseudonymisees(db: D1Database, filtre: Filtr
   return analyses.map(a => a.repondant_id
     ? { ...a, portee: pseudonymes.get(a.repondant_id) ?? 'Répondant sans entretien' }
     : a)
+}
+
+/** Analyse avec sa portée telle qu'une IA peut la voir : pseudonyme du répondant pour une fiche. */
+export async function lireAnalysePseudonymisee(db: D1Database, id: string): Promise<Analyse & { portee: string }> {
+  const analyse = await lireAnalyse(db, id)
+  let portee = 'Projet entier'
+  if (analyse.repondant_id) {
+    portee = (await pseudonymesDuProjet(db, analyse.projet_id)).get(analyse.repondant_id) ?? 'Répondant sans entretien'
+  } else if (analyse.questionnaire_id) {
+    const projet = await lireProjet(db, analyse.projet_id)
+    portee = `Questionnaire : ${libellesQuestionnaires(projet.questionnaires).get(analyse.questionnaire_id) ?? analyse.questionnaire_id}`
+  }
+  return { ...analyse, portee }
 }
 
 export async function lireAnalyse(db: D1Database, id: string): Promise<Analyse> {

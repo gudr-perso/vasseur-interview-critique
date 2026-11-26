@@ -8,7 +8,7 @@ import {
 } from '../services/projets'
 import { MODES, enregistrerQuestionnaire, lireQuestionnaire, publierQuestionnaire } from '../services/questionnaires'
 import { LIMITES_ANALYSE, TYPES_ANALYSE } from '../../shared/analyses'
-import { enregistrerAnalyse, lireAnalyse, listerAnalysesPseudonymisees } from '../services/analyses'
+import { enregistrerAnalyse, lireAnalysePseudonymisee, listerAnalysesPseudonymisees } from '../services/analyses'
 import {
   construireCorpus, decouper, entretienPseudonymise, listerRepondantsPseudonymises,
 } from '../services/corpus'
@@ -290,7 +290,7 @@ export const OUTILS: Outil[] = [
   outil({
     nom: 'lire_analyse',
     description:
-      "Lit une analyse enregistrée, par morceaux de 20 000 caractères au plus. Renvoie ses informations (type, portée, source, nombre d'entretiens, date) et { taille, debut, texte, suite } : suite est la position du morceau suivant (à passer en debut), ou null quand tout est lu. Les identifiants viennent de lister_analyses.",
+      "Lit une analyse enregistrée, par morceaux de 20 000 caractères au plus. Renvoie ses informations (type, portée — projet entier, questionnaire, ou pseudonyme du répondant pour une fiche —, source, nombre d'entretiens, date) et { taille, debut, texte, suite } : suite est la position du morceau suivant (à passer en debut), ou null quand tout est lu. Les identifiants viennent de lister_analyses.",
     lectureSeule: true,
     schema: z.object({
       analyse_id: z.string().describe("Identifiant de l'analyse, tel que renvoyé par lister_analyses"),
@@ -298,7 +298,7 @@ export const OUTILS: Outil[] = [
       longueur: longueurMorceau,
     }),
     executer: async (ctx, { analyse_id, debut, longueur }) => {
-      const { contenu, ...analyse } = await lireAnalyse(ctx.db, analyse_id)
+      const { contenu, ...analyse } = await lireAnalysePseudonymisee(ctx.db, analyse_id)
       return { ...analyse, ...decouper(contenu, debut, longueur) }
     },
   }),

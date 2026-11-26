@@ -87,6 +87,44 @@ export interface QuestionnaireResume {
   mode: string
   statut: string
   code: string
+  cree_le: string
+}
+
+type QuestionnaireADesigner = Pick<QuestionnaireResume, 'id' | 'public_vise' | 'mode' | 'statut' | 'cree_le'>
+
+/** Complète avec `completer` le libellé des questionnaires qui en partagent un avec un autre. */
+function departager(
+  libelles: Map<string, string>, questionnaires: QuestionnaireADesigner[], completer: (q: QuestionnaireADesigner) => string,
+): Map<string, string> {
+  const effectifs = new Map<string, number>()
+  for (const libelle of libelles.values()) effectifs.set(libelle, (effectifs.get(libelle) ?? 0) + 1)
+  return new Map(questionnaires.map(q => {
+    const actuel = libelles.get(q.id)!
+    return [q.id, effectifs.get(actuel)! > 1 ? completer(q) : actuel]
+  }))
+}
+
+/**
+ * Libellés qui distinguent les questionnaires d'un même projet : « public (mode, statut) », complété de la date
+ * de création, puis de l'heure (UTC), tant que deux questionnaires restent indiscernables.
+ */
+export function libellesQuestionnaires(questionnaires: QuestionnaireADesigner[]): Map<string, string> {
+  const base = (q: QuestionnaireADesigner) => `${q.public_vise} (${q.mode}, ${q.statut}`
+  const jour = (q: QuestionnaireADesigner) => {
+    const [annee, mois, date] = q.cree_le.slice(0, 10).split('-')
+    return `${base(q)}, créé le ${date}/${mois}/${annee}`
+  }
+  const heure = (q: QuestionnaireADesigner) => `${jour(q)} à ${q.cree_le.slice(11, 16)}`
+  let libelles = new Map(questionnaires.map(q => [q.id, `${base(q)})`]))
+  libelles = departager(libelles, questionnaires, q => `${jour(q)})`)
+  libelles = departager(libelles, questionnaires, q => `${heure(q)})`)
+  // Créés dans la même minute : leur rang, dans l'ordre de la liste, les départage.
+  const rangs = new Map<string, number>()
+  return departager(libelles, questionnaires, q => {
+    const rang = (rangs.get(heure(q)) ?? 0) + 1
+    rangs.set(heure(q), rang)
+    return `${heure(q)}, n° ${rang})`
+  })
 }
 
 export interface ProjetComplet extends Projet {

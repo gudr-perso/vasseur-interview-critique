@@ -1,3 +1,4 @@
+import { libellesQuestionnaires } from '../../shared/interviews'
 import { reponseEnTexte, type Reponse } from '../../shared/repondants'
 import { ErreurMetier } from '../erreurs'
 import { champDeTitre, rendreEntretien, surUneLigne, type LigneTour } from './corpus'
@@ -152,14 +153,15 @@ export async function exporterReponses(
 
   const [annee, mois, jour] = date.split('-')
   const entete = [`# ${surUneLigne(projet.titre)}`]
-  if (questionnaire) entete.push(`Questionnaire : ${surUneLigne(questionnaire.public_vise)}`)
+  const libelles = libellesQuestionnaires(projet.questionnaires)
+  if (questionnaire) entete.push(`Questionnaire : ${surUneLigne(libelles.get(questionnaire.id) ?? questionnaire.public_vise)}`)
   entete.push(`Export du ${jour}/${mois}/${annee} · ${retenus.length} entretien${retenus.length > 1 ? 's' : ''}`, '')
   const sections = retenus.map(r => {
     const identite = nomEntier(r) || 'Répondant sans nom'
     // Même neutralisation que le corpus : rien de ce qu'a saisi le répondant ne peut faire un titre ou une ligne.
     const detail = [champDeTitre(r.poste), champDeTitre(r.entreprise)].filter(Boolean).join(', ')
     const titre = `## ${identite}${detail ? ` — ${detail}` : ''} (${r.statut === 'termine' ? 'terminé' : 'en cours'})`
-    return rendreEntretien(r, titre, tours.get(r.id) ?? [], false)
+    return rendreEntretien(r, titre, libelles.get(r.questionnaire_id) ?? r.public_vise, tours.get(r.id) ?? [], false)
   })
   return {
     contenu: entete.join('\n') + '\n' + sections.join('\n'),

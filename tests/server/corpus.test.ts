@@ -100,15 +100,15 @@ describe('construireCorpus', () => {
     ])
     const titres = corpus.texte.split('\n').filter(l => l.startsWith('## '))
     expect(titres).toEqual(['## Répondant 1 — Comptable, CUMA du Val', '## Répondant 2 — CUMA des Prés'])
-    expect(corpus.texte).toContain('Questionnaire : Comptables · terminé le 25/11/2026')
-    expect(corpus.texte).toContain('Questionnaire : Gérants · terminé le 24/11/2026')
+    expect(corpus.texte).toContain('Questionnaire : Comptables (hybride, ouvert) · terminé le 25/11/2026')
+    expect(corpus.texte).toContain('Questionnaire : Gérants (entretien, ouvert) · terminé le 24/11/2026')
   })
 
   it('produit le format attendu pour un entretien hybride', async () => {
     const { texte } = await construireCorpus(base.db, { projet_id: projetId, repondant_id: ids.A.id })
     expect(texte).toBe([
       '## Répondant 1 — Comptable, CUMA du Val',
-      'Questionnaire : Comptables · terminé le 25/11/2026',
+      'Questionnaire : Comptables (hybride, ouvert) · terminé le 25/11/2026',
       '',
       '**Q1. À quelle fréquence saisissez-vous les temps ?**',
       'Objectif : mesurer la charge',
@@ -139,7 +139,7 @@ describe('construireCorpus', () => {
     const corpus = await construireCorpus(base.db, { projet_id: projetId, inclure_en_cours: true })
     expect(corpus.nb_entretiens).toBe(3)
     expect(corpus.repondants.map(r => r.pseudonyme)).toEqual(['Répondant 1', 'Répondant 2', 'Répondant 3'])
-    expect(corpus.texte).toContain('## Répondant 3 — Gérante, CUMA du Nord\nQuestionnaire : Comptables · entretien inachevé')
+    expect(corpus.texte).toContain('## Répondant 3 — Gérante, CUMA du Nord\nQuestionnaire : Comptables (hybride, ouvert) · entretien inachevé')
     expect(corpus.texte).not.toContain('Question jamais répondue')
     expect(corpus.repondants.map(r => r.id)).not.toContain(ids.D.id)
   })

@@ -1,5 +1,5 @@
 import type { PorteeAnalyse } from '../../shared/analyses'
-import type { ContenuEntretien, ContenuHybride, TypeDemande } from '../../shared/interviews'
+import { libellesQuestionnaires, type ContenuEntretien, type ContenuHybride, type TypeDemande } from '../../shared/interviews'
 import { reponseEnTexte, type Reponse, type StatutRepondant } from '../../shared/repondants'
 import { ErreurMetier } from '../erreurs'
 import { caracteres } from '../texte'
@@ -90,12 +90,13 @@ function objectifs(contenuJson: string): Map<string, string> {
 
 /**
  * Un entretien en Markdown. `titre` est la ligne de titre déjà composée (`## …`) : pseudonyme pour l'IA, vrai nom pour l'admin.
+ * `questionnaire` est son libellé distinctif (`libellesQuestionnaires`).
  * `avecObjectifs` : l'analyse reçoit l'objectif de chaque question, pas la lecture ni l'export.
  * Le texte saisi est neutralisé (voir `lignesDeReponse`) : la forme est décrite aux IA par `FORME_ENTRETIENS`.
  */
 export function rendreEntretien(
-  repondant: Pick<LigneRepondant, 'statut' | 'termine_le' | 'public_vise' | 'contenu'>,
-  titre: string, tours: LigneTour[], avecObjectifs = true,
+  repondant: Pick<LigneRepondant, 'statut' | 'termine_le' | 'contenu'>,
+  titre: string, questionnaire: string, tours: LigneTour[], avecObjectifs = true,
 ): string {
   const objectifParQuestion = avecObjectifs ? objectifs(repondant.contenu) : new Map<string, string>()
   const etat = repondant.statut === 'termine' && repondant.termine_le
@@ -103,7 +104,7 @@ export function rendreEntretien(
     : 'entretien inachevé'
   const lignes = [
     titre,
-    `Questionnaire : ${surUneLigne(repondant.public_vise)} · ${etat}`,
+    `Questionnaire : ${surUneLigne(questionnaire)} · ${etat}`,
     '',
   ]
   let numero = 0
@@ -202,7 +203,8 @@ export async function entretienPseudonymise(db: D1Database, repondantId: string)
  * Le numéro d'un répondant vaut pour tout le projet : il ne change pas avec la portée demandée.
  */
 export async function construireCorpus(db: D1Database, portee: PorteeAnalyse): Promise<Corpus> {
-  await lireProjet(db, portee.projet_id)
+  const projet = await lireProjet(db, portee.projet_id)
+  const libelles = libellesQuestionnaires(projet.questionnaires)
   if (portee.questionnaire_id) {
     const questionnaire = await lireQuestionnaire(db, portee.questionnaire_id)
     if (questionnaire.projet_id !== portee.projet_id) {
@@ -243,7 +245,10 @@ export async function construireCorpus(db: D1Database, portee: PorteeAnalyse): P
   }
 
   return {
-    texte: retenus.map(r => rendreEntretien(r, titreEntretien(pseudonymes.get(r.id)!, r.poste, r.entreprise), toursParRepondant.get(r.id) ?? [])).join('\n'),
+    texte: retenus.map(r => rendreEntretien(
+      r, titreEntretien(pseudonymes.get(r.id)!, r.poste, r.entreprise), libelles.get(r.questionnaire_id) ?? r.public_vise,
+      toursParRepondant.get(r.id) ?? [],
+    )).join('\n'),
     nb_entretiens: retenus.length,
     repondants: retenus.map(r => ({ id: r.id, pseudonyme: pseudonymes.get(r.id)! })),
   }
@@ -286,9 +291,10 @@ export async function enteteAnalyse(db: D1Database, projetId: string): Promise<s
   if (projet.note_cadrage) lignes.push('', '## Note de cadrage', projet.note_cadrage)
   if (projet.resume_contexte) lignes.push('', '## Résumé de contexte', projet.resume_contexte)
 
+  const libelles = libellesQuestionnaires(projet.questionnaires)
   for (const resume of projet.questionnaires) {
     const questionnaire = await lireQuestionnaire(db, resume.id)
-    lignes.push('', `## Questionnaire : ${questionnaire.public_vise} (${questionnaire.mode})`)
+    lignes.push('', `## Questionnaire : ${surUneLigne(libelles.get(resume.id)!)}`)
     if (questionnaire.mode === 'hybride') {
       for (const q of (questionnaire.contenu as ContenuHybride).questions) {
         lignes.push(`- ${q.libelle} — objectif : ${q.objectif}`)

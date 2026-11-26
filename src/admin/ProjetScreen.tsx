@@ -93,7 +93,7 @@ export function ProjetScreen() {
         projetId={projet.id} questionnaires={projet.questionnaires}
         onCree={q => majProjet(actuel => ({
           ...actuel,
-          questionnaires: [...actuel.questionnaires, { id: q.id, public_vise: q.public_vise, mode: q.mode, statut: q.statut, code: q.code }],
+          questionnaires: [...actuel.questionnaires, { id: q.id, public_vise: q.public_vise, mode: q.mode, statut: q.statut, code: q.code, cree_le: q.cree_le }],
         }))}
       />
       <ProjetAnalyses projet={projet} />

@@ -315,7 +315,7 @@ describe('analyse des entretiens', () => {
       'lire_reponses', { projet_id: projetId, questionnaire_id: qComptables, inclure_en_cours: true })
     expect(comptables.nb_entretiens).toBe(2)
     expect(comptables.repondants.map(x => x.pseudonyme)).toEqual(['Répondant 1', 'Répondant 3'])
-    expect(comptables.texte).toContain('## Répondant 3 — Trésorier, CUMA des Saules\nQuestionnaire : Comptables · entretien inachevé')
+    expect(comptables.texte).toContain('## Répondant 3 — Trésorier, CUMA des Saules\nQuestionnaire : Comptables (hybride, ouvert) · entretien inachevé')
     expect(comptables.texte).not.toContain('Gérants')
   })
 
@@ -356,7 +356,9 @@ describe('analyse des entretiens', () => {
 
     type Morceau = { id: string; type: string; source: string; taille: number; debut: number; texte: string; suite: number | null }
     const premier = await analyser<Morceau>('lire_analyse', { analyse_id: synthese.id })
-    expect(premier).toMatchObject({ id: synthese.id, type: 'synthese', source: 'mcp', taille: Array.from(contenu).length, debut: 0, suite: 20_000 })
+    expect(premier).toMatchObject({
+      id: synthese.id, type: 'synthese', portee: 'Projet entier', source: 'mcp', taille: Array.from(contenu).length, debut: 0, suite: 20_000,
+    })
     expect(premier).not.toHaveProperty('contenu')
     let texte = premier.texte
     let suite = premier.suite
@@ -366,7 +368,15 @@ describe('analyse des entretiens', () => {
       suite = morceau.suite
     }
     expect(texte).toBe(contenu)
-    expect(await analyser<Morceau>('lire_analyse', { analyse_id: fiche.id })).toMatchObject({ texte: '## Profil\nComptable.', suite: null })
+    // La portée d'une fiche nomme le répondant par son pseudonyme, jamais par son nom.
+    const lueFiche = await analyser<Morceau & { portee: string }>('lire_analyse', { analyse_id: fiche.id })
+    expect(lueFiche).toMatchObject({ portee: 'Répondant 1', texte: '## Profil\nComptable.', suite: null })
+    const parQuestionnaire = await analyser<{ id: string }>('enregistrer_analyse', {
+      projet_id: projetId, type: 'synthese', questionnaire_id: qComptables, contenu: 'Synthèse des comptables', nb_entretiens: 1,
+    })
+    expect(await analyser<{ portee: string }>('lire_analyse', { analyse_id: parQuestionnaire.id }))
+      .toMatchObject({ portee: 'Questionnaire : Comptables (hybride, ouvert)' })
+    expect(JSON.stringify(lueFiche)).not.toContain(identites.A.nom)
   })
 
   it('renvoie des erreurs lisibles', async () => {

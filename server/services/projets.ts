@@ -61,7 +61,7 @@ export async function lireProjet(db: D1Database, id: string): Promise<ProjetComp
     ).bind(id).all<Logiciel>(),
     db.prepare('SELECT id, nom, contenu, cree_le FROM documents WHERE projet_id = ? ORDER BY cree_le')
       .bind(id).all<DocumentProjet>(),
-    db.prepare('SELECT id, public_vise, mode, statut, code FROM questionnaires WHERE projet_id = ? ORDER BY cree_le')
+    db.prepare('SELECT id, public_vise, mode, statut, code, cree_le FROM questionnaires WHERE projet_id = ? ORDER BY cree_le')
       .bind(id).all<QuestionnaireResume>(),
   ])
   return {

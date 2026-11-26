@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { TYPES_ANALYSE, type TypeAnalyse } from '../../shared/analyses'
-import type { QuestionnaireResume } from '../../shared/interviews'
+import { libellesQuestionnaires, type QuestionnaireResume } from '../../shared/interviews'
 import { Button } from '../components/ui/Button'
 import { useCatalogue } from '../lib/modeles'
 import { api, type DemandeAnalyse } from './api'
@@ -67,7 +67,9 @@ function ChoixAnalyse({ choix, onChange, questionnaires }: {
     const questionnaireId = type === 'fiche_repondant' && !choix.questionnaireId ? questionnaires[0]?.id ?? '' : choix.questionnaireId
     onChange({ ...choix, type, questionnaireId })
   }
-  const optionsQuestionnaires = questionnaires.map(q => ({ valeur: q.id, libelle: `Questionnaire : ${q.public_vise}` }))
+  // Le seul public ne suffit pas : deux questionnaires peuvent viser le même.
+  const libelles = libellesQuestionnaires(questionnaires)
+  const optionsQuestionnaires = questionnaires.map(q => ({ valeur: q.id, libelle: `Questionnaire : ${libelles.get(q.id)}` }))
   const fiche = choix.type === 'fiche_repondant'
 
   return (
