@@ -1,5 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
-import { LIMITES_ANALYSE, type TypeAnalyse } from '../../shared/analyses'
+import {
+  LIMITES_ANALYSE, ligneDeControle, type ControleFluxAnalyse, type EnteteFluxAnalyse, type TypeAnalyse,
+} from '../../shared/analyses'
 import { lireCorps, parametre } from '../api'
 import type { Env } from '../env'
 import { ErreurMetier } from '../erreurs'
@@ -177,8 +179,10 @@ export function messageAnalyse(type: TypeAnalyse, entete: string, corpus: string
 // ─── Route : POST /api/admin/projets/:id/analyses ────────────────────────────
 
 export const MENTION_TRONQUEE = '\n\n*(Analyse interrompue : longueur maximale atteinte.)*'
-/** Préfixe de la dernière ligne du flux quand la génération échoue. */
-export const MARQUE_ERREUR = '\n\n[[ERREUR]] '
+/** Sans aucun envoi pendant cette durée, un signal de vie part : Cloudflare coupe une réponse muette vers 100 s. */
+export const INTERVALLE_VIE_MS = 15_000
+/** Au-delà, l'en-tête non lu est signalé dans les journaux : quelque chose retient le flux en route. */
+const DELAI_ENTETE_MS = 10_000
 
 const SANS_CLE = "Analyse par l'API indisponible : clé non configurée. Utilisez Claude avec le connecteur MCP."
 
@@ -190,20 +194,32 @@ function messageLisible(e: unknown): string {
   const brut = e instanceof ErreurIa ? e.message
     : e instanceof ErreurMetier ? `L'analyse a été produite mais n'a pas pu être enregistrée : ${e.message}`
       : "Erreur interne : l'analyse n'a pas été enregistrée."
-  // Le message tient sur la dernière ligne du flux.
   return brut.replace(/\s+/g, ' ').trim()
 }
 
+/** Séparateur des lignes de contrôle : tiré au hasard, jamais montré au modèle, qui ne peut donc pas l'écrire. */
+function nouveauSeparateur(): string {
+  const octets = crypto.getRandomValues(new Uint8Array(16))
+  return Array.from(octets, o => o.toString(16).padStart(2, '0')).join('')
+}
+
+export interface ReglagesFlux {
+  /** Pour les tests : intervalle du signal de vie. */
+  intervalleVieMs?: number
+}
+
 /**
- * Lance une analyse et répond aussitôt avec un flux `text/plain` : une ligne d'en-tête JSON (`{"nb_entretiens":n}`),
- * puis le texte au fil de l'eau, et en cas d'échec une dernière ligne `[[ERREUR]] message`.
+ * Lance une analyse et répond aussitôt avec un flux `text/plain` dont le contrat est décrit dans
+ * `shared/analyses.ts` : en-tête JSON avec le séparateur, texte au fil de l'eau, lignes de contrôle
+ * (signal de vie, puis succès avec l'identifiant de l'analyse enregistrée, ou erreur).
  *
- * La génération ne dépend pas du navigateur : elle est conduite par une tâche confiée à `waitUntil`, qui pousse
+ * La génération ne dépend pas du navigateur : elle est conduite par une tâche confiée à `waitUntil`, qui écrit
  * chaque morceau dans le flux sans jamais attendre qu'il soit lu, et enregistre l'analyse à la fin.
  */
 export async function repondreAnalyse(
   contexte: EventContext<Env, 'id', Record<string, unknown>>,
   generer: GenerateurAnalyse = genererAnalyse,
+  reglages: ReglagesFlux = {},
 ): Promise<Response> {
   const { request, env, params } = contexte
   const projetId = parametre(params.id)
@@ -241,37 +257,54 @@ export async function repondreAnalyse(
     message: messageAnalyse(demande.type, await enteteAnalyse(env.DB, projetId), corpus.texte, corpus.nb_entretiens),
   }
 
+  // Flux d'identité : c'est la forme que le moteur des Workers transmet morceau par morceau. Avec les stratégies
+  // par défaut, la promesse d'une écriture n'est tenue qu'une fois le morceau lu par le moteur, c'est-à-dire
+  // parti vers le navigateur : elle sert à vérifier que l'en-tête est réellement transmis.
+  const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>()
+  const ecrivain = writable.getWriter()
   const encodeur = new TextEncoder()
-  let controleur!: ReadableStreamDefaultController<Uint8Array>
+  const separateur = nouveauSeparateur()
+  const intervalleVie = reglages.intervalleVieMs ?? INTERVALLE_VIE_MS
   let navigateurParti = false
-  const corps = new ReadableStream<Uint8Array>({
-    start(c) { controleur = c },
-    cancel() { navigateurParti = true },
-  })
-  // `enqueue` ne bloque jamais : sans lecteur, les morceaux s'accumulent en mémoire (32 000 jetons au plus),
-  // et la génération continue au rythme de l'API, pas à celui du navigateur.
-  const envoyer = (texte: string) => {
-    if (navigateurParti) return
-    try {
-      controleur.enqueue(encodeur.encode(texte))
-    } catch {
-      navigateurParti = true
-    }
+  let minuterieVie: ReturnType<typeof setTimeout> | undefined
+
+  // Les écritures ne sont jamais attendues par la génération : sans lecteur, les morceaux s'accumulent en mémoire
+  // (32 000 jetons au plus), et la génération continue au rythme de l'API, pas à celui du navigateur.
+  const ecrire = (texte: string): Promise<void> => {
+    if (navigateurParti) return Promise.resolve()
+    armerVie()
+    return ecrivain.write(encodeur.encode(texte)).catch(() => { navigateurParti = true })
   }
+  const controler = (controle: ControleFluxAnalyse) => ecrire(ligneDeControle(separateur, controle))
+  // Après `intervalleVie` sans aucun envoi, un signal de vie ; il se réarme à chaque envoi.
+  function armerVie() {
+    clearTimeout(minuterieVie)
+    minuterieVie = setTimeout(() => { void controler({ type: 'vie' }) }, intervalleVie)
+  }
+
+  const entete: EnteteFluxAnalyse = { nb_entretiens: corpus.nb_entretiens, controle: separateur }
+  let enteteTransmis = false
+  void ecrire(`${JSON.stringify(entete)}\n`).then(() => { enteteTransmis = !navigateurParti })
+  // Vérification : l'écriture de l'en-tête n'est tenue qu'une fois l'en-tête parti. S'il est retenu, on le saura.
+  const minuterieEntete = setTimeout(() => {
+    if (!enteteTransmis && !navigateurParti) {
+      console.warn(`Analyse par l'API : l'en-tête du flux n'est toujours pas parti après ${DELAI_ENTETE_MS / 1000} s.`)
+    }
+  }, DELAI_ENTETE_MS)
 
   const produire = async (): Promise<void> => {
     try {
       const generation = generer(options)
-      for await (const morceau of generation) envoyer(morceau)
+      for await (const morceau of generation) void ecrire(morceau)
       const { texte, tronquee, refusee } = await generation.fin()
       if (refusee) throw new ErreurIa("L'IA a refusé de produire cette analyse ; rien n'a été enregistré.")
       if (!texte.trim()) throw new ErreurIa("L'IA n'a produit aucun texte ; rien n'a été enregistré.")
       let contenu = texte
       if (tronquee) {
-        envoyer(MENTION_TRONQUEE)
+        void ecrire(MENTION_TRONQUEE)
         contenu += MENTION_TRONQUEE
       }
-      await enregistrerAnalyse(env.DB, {
+      const analyse = await enregistrerAnalyse(env.DB, {
         projet_id: projetId,
         type: demande.type,
         contenu,
@@ -280,21 +313,22 @@ export async function repondreAnalyse(
         repondant_id: demande.repondant_id,
         nb_entretiens: corpus.nb_entretiens,
       })
+      void controler({ type: 'succes', analyse_id: analyse.id })
     } catch (e) {
       console.error("Analyse par l'API :", e instanceof ErreurIa ? e.message : '', e instanceof ErreurIa ? e.cause ?? '' : e)
-      envoyer(MARQUE_ERREUR + messageLisible(e))
+      void controler({ type: 'erreur', message: messageLisible(e) })
     } finally {
-      if (!navigateurParti) {
-        try { controleur.close() } catch { /* flux déjà fermé par le navigateur */ }
-      }
+      clearTimeout(minuterieVie)
+      clearTimeout(minuterieEntete)
+      // La fermeture passe après les écritures en attente ; elle échoue sans gravité si le navigateur est parti.
+      ecrivain.close().catch(() => {})
     }
   }
 
-  envoyer(`${JSON.stringify({ nb_entretiens: corpus.nb_entretiens })}\n`)
   // Sans waitUntil, la fermeture de l'onglet arrêterait le travail en cours ; l'appel garde son récepteur (pas de déstructuration).
   contexte.waitUntil(produire())
 
-  return new Response(corps, {
+  return new Response(readable, {
     status: 200,
     headers: {
       'Content-Type': 'text/plain; charset=utf-8',

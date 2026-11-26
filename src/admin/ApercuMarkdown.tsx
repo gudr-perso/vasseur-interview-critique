@@ -1,4 +1,4 @@
-import ReactMarkdown from 'react-markdown'
+import ReactMarkdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
 // Mise en forme des éléments produits par le Markdown, avec les seules couleurs et polices du thème.
@@ -16,11 +16,19 @@ const CLASSES = [
   '[&_hr]:my-4 [&_hr]:border-border [&>*:first-child]:mt-0',
 ].join(' ')
 
+/**
+ * Aucune image n'est chargée : une analyse influencée par un entretien pourrait faire charger une image distante
+ * dont l'adresse porterait des extraits du corpus. L'image est remplacée par son texte alternatif.
+ */
+const COMPOSANTS: Components = {
+  img: ({ alt }) => (alt ? <span>{alt}</span> : null),
+}
+
 export function ApercuMarkdown({ texte }: { texte: string }) {
   if (!texte.trim()) return <p className="text-[0.84rem] text-muted italic">Rien à afficher pour l'instant.</p>
   return (
     <div className={CLASSES}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]}>{texte}</ReactMarkdown>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={COMPOSANTS}>{texte}</ReactMarkdown>
     </div>
   )
 }

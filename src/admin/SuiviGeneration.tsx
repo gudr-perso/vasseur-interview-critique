@@ -66,14 +66,8 @@ function Terminee({ etat }: { etat: Extract<EtatGeneration, { phase: 'terminee' 
     <>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <Confirmation>Analyse terminée — {nombre(etat.nb_entretiens)} entretien(s)</Confirmation>
-        {etat.analyseId && (
-          <Link to={`/admin/analyses/${etat.analyseId}`} className={CLASSE_LIEN_BOUTON}>Ouvrir l'analyse enregistrée</Link>
-        )}
-        {etat.recherche && <span className={`${CLASSE_ETAT} text-muted`}>Enregistrement…</span>}
+        <Link to={`/admin/analyses/${etat.analyseId}`} className={CLASSE_LIEN_BOUTON}>Ouvrir l'analyse enregistrée</Link>
       </div>
-      {!etat.recherche && !etat.analyseId && (
-        <p className={CLASSE_AIDE}>L'enregistrement tarde : l'analyse apparaîtra dans la liste dans quelques instants.</p>
-      )}
       <ApercuDirect texte={etat.texte} />
     </>
   )

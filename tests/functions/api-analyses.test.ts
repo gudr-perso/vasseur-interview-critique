@@ -7,6 +7,7 @@ import {
 } from '../../server/ia/analyse'
 import { ErreurIa } from '../../server/ia/types'
 import { enregistrerAnalyse, listerAnalyses } from '../../server/services/analyses'
+import { FORME_SEPARATEUR, type ControleFluxAnalyse, type EnteteFluxAnalyse } from '../../shared/analyses'
 import { creerProjet } from '../../server/services/projets'
 import { enregistrerQuestionnaire, publierQuestionnaire } from '../../server/services/questionnaires'
 import { creerRepondantGenerique, lireRepondantParJeton } from '../../server/services/repondants'
@@ -89,6 +90,8 @@ async function appeler(handler: Handler | undefined, methode: string, chemin: st
 
 interface Scenario {
   morceaux: string[]
+  /** Bloque la génération avant le premier morceau, jusqu'à ce que cette promesse soit tenue. */
+  avantTout?: Promise<void>
   tronquee?: boolean
   refusee?: boolean
   erreur?: string
@@ -105,6 +108,7 @@ function simulation(scenario: Scenario) {
     return {
       async *[Symbol.asyncIterator]() {
         let texte = ''
+        if (scenario.avantTout) await scenario.avantTout
         for (const [i, morceau] of scenario.morceaux.entries()) {
           if (i === 1 && scenario.attente) await scenario.attente
           texte += morceau
@@ -119,7 +123,34 @@ function simulation(scenario: Scenario) {
       },
     }
   }
-  return { generer, demandes, post: route<'id'>(c => repondreAnalyse(c, generer)) as Handler }
+  return { generer, demandes, post: route<'id'>(c => repondreAnalyse(c, generer, { intervalleVieMs: 20 })) as Handler }
+}
+
+/** Découpe un flux complet selon le contrat : en-tête, texte sans les lignes de contrôle, lignes de contrôle. */
+function analyserFlux(brut: string) {
+  const fin = brut.indexOf('\n')
+  const entete = JSON.parse(brut.slice(0, fin)) as EnteteFluxAnalyse
+  expect(entete.controle).toMatch(FORME_SEPARATEUR)
+  const marque = `\n${entete.controle} `
+  const controles: ControleFluxAnalyse[] = []
+  let reste = brut.slice(fin + 1)
+  let texte = ''
+  for (;;) {
+    const i = reste.indexOf(marque)
+    if (i < 0) break
+    const finLigne = reste.indexOf('\n', i + marque.length)
+    expect(finLigne, 'ligne de contrôle terminée').toBeGreaterThan(i)
+    texte += reste.slice(0, i)
+    controles.push(JSON.parse(reste.slice(i + marque.length, finLigne)) as ControleFluxAnalyse)
+    reste = reste.slice(finLigne + 1)
+  }
+  texte += reste
+  const derniere = controles.at(-1)
+  // Le flux se termine toujours par une ligne de succès ou d'erreur, et rien ne la suit.
+  expect(reste).toBe('')
+  expect(derniere?.type === 'succes' || derniere?.type === 'erreur').toBe(true)
+  expect(controles.slice(0, -1).every(c => c.type === 'vie')).toBe(true)
+  return { entete, texte, controles, fin: derniere! }
 }
 
 async function generer(sim: ReturnType<typeof simulation>, corps: unknown, id = projetId) {
@@ -191,8 +222,9 @@ describe('POST /api/admin/projets/:id/analyses — génération en flux', () => 
     expect(reponse.status).toBe(200)
     expect(reponse.headers.get('Content-Type')).toBe('text/plain; charset=utf-8')
     expect(reponse.headers.get('Cache-Control')).toContain('no-store')
-    const texte = await reponse.text()
-    expect(texte).toBe('{"nb_entretiens":2}\n## Constats\n2 répondants sur 2 veulent un export.')
+    const flux = analyserFlux(await reponse.text())
+    expect(flux.entete.nb_entretiens).toBe(2)
+    expect(flux.texte).toBe('## Constats\n2 répondants sur 2 veulent un export.')
     await ctx.tache()
 
     const [demande] = sim.demandes
@@ -208,6 +240,7 @@ describe('POST /api/admin/projets/:id/analyses — génération en flux', () => 
     expect(analyses[0]).toMatchObject({
       type: 'synthese', source: MODELE, nb_entretiens: 2, questionnaire_id: qComptables.id, repondant_id: null,
     })
+    expect(flux.fin).toEqual({ type: 'succes', analyse_id: analyses[0].id })
     const lue = await appeler(analyseId.onRequestGet, 'GET', '/x', undefined, analyses[0].id)
     expect(lue.donnees.contenu).toBe('## Constats\n2 répondants sur 2 veulent un export.')
   })
@@ -215,7 +248,7 @@ describe('POST /api/admin/projets/:id/analyses — génération en flux', () => 
   it('inclut les entretiens en cours sur demande', async () => {
     const sim = simulation({ morceaux: ['## Synthèse'] })
     const { reponse, ctx } = await generer(sim, { type: 'expression_besoin', inclure_en_cours: true })
-    expect((await reponse.text()).split('\n')[0]).toBe('{"nb_entretiens":3}')
+    expect(analyserFlux(await reponse.text()).entete.nb_entretiens).toBe(3)
     await ctx.tache()
     expect(sim.demandes[0].message).toContain('Je ne sais pas encore.')
     expect(sim.demandes[0].consigne).toBe(consigneAnalyse('expression_besoin'))
@@ -225,7 +258,8 @@ describe('POST /api/admin/projets/:id/analyses — génération en flux', () => 
   it("rattache une fiche à son répondant, même quand l'entretien est en cours", async () => {
     const sim = simulation({ morceaux: ['## Profil'] })
     const { reponse, ctx } = await generer(sim, { type: 'fiche_repondant', repondant_id: repondants.C.id })
-    expect(await reponse.text()).toBe('{"nb_entretiens":1}\n## Profil')
+    const flux = analyserFlux(await reponse.text())
+    expect([flux.entete.nb_entretiens, flux.texte]).toEqual([1, '## Profil'])
     await ctx.tache()
     expect(sim.demandes[0].consigne).toBe(consigneAnalyse('fiche_repondant'))
     expect((await analysesDuProjet())[0]).toMatchObject({ type: 'fiche_repondant', repondant_id: repondants.C.id, nb_entretiens: 1 })
@@ -235,7 +269,7 @@ describe('POST /api/admin/projets/:id/analyses — génération en flux', () => 
     const sim = simulation({ morceaux: ['## Début'], tronquee: true })
     const { reponse, ctx } = await generer(sim, { type: 'synthese' })
     const mention = '\n\n*(Analyse interrompue : longueur maximale atteinte.)*'
-    expect(await reponse.text()).toBe(`{"nb_entretiens":2}\n## Début${mention}`)
+    expect(analyserFlux(await reponse.text()).texte).toBe(`## Début${mention}`)
     await ctx.tache()
     const [derniere] = await analysesDuProjet()
     expect((await appeler(analyseId.onRequestGet, 'GET', '/x', undefined, derniere.id)).donnees.contenu).toBe(`## Début${mention}`)
@@ -250,14 +284,52 @@ describe('POST /api/admin/projets/:id/analyses — génération en flux', () => 
     for (const [scenario, message] of cas) {
       const avant = (await analysesDuProjet()).length
       const { reponse, ctx } = await generer(simulation(scenario), { type: 'synthese' })
-      const texte = await reponse.text()
-      const [, erreur] = texte.split('\n\n[[ERREUR]] ')
-      expect(erreur).toMatch(message)
-      expect(erreur).not.toContain('\n')
-      expect(texte.startsWith(`{"nb_entretiens":2}\n${scenario.morceaux[0]}`)).toBe(true)
+      const flux = analyserFlux(await reponse.text())
+      expect(flux.fin.type).toBe('erreur')
+      expect(flux.fin.type === 'erreur' && flux.fin.message).toMatch(message)
+      expect(flux.texte).toBe(scenario.morceaux[0])
       await ctx.tache()
       expect(await analysesDuProjet()).toHaveLength(avant)
     }
+  })
+
+  it("transmet l'en-tête avant tout texte, puis un signal de vie tant que rien n'arrive", async () => {
+    let liberer!: () => void
+    const avantTout = new Promise<void>(r => { liberer = r })
+    const sim = simulation({ morceaux: ['## Constats'], avantTout })
+    const { reponse, ctx } = await generer(sim, { type: 'synthese' })
+    const lecteur = reponse.body!.getReader()
+    const decodeur = new TextDecoder()
+    // Le modèle n'a encore rien produit : l'en-tête est déjà lisible, seul.
+    const premier = decodeur.decode((await lecteur.read()).value, { stream: true })
+    expect(premier).toMatch(/^\{"nb_entretiens":2,"controle":"[0-9a-f]{32}"\}\n$/)
+    const { controle } = JSON.parse(premier) as EnteteFluxAnalyse
+    let lu = premier
+    while (lu.split(`${controle} {"type":"vie"}`).length < 3) lu += decodeur.decode((await lecteur.read()).value, { stream: true })
+    liberer()
+    for (;;) {
+      const { done, value } = await lecteur.read()
+      if (done) break
+      lu += decodeur.decode(value, { stream: true })
+    }
+    await ctx.tache()
+    const flux = analyserFlux(lu)
+    expect(flux.texte).toBe('## Constats')
+    expect(flux.controles.filter(c => c.type === 'vie').length).toBeGreaterThanOrEqual(2)
+    expect(flux.fin).toEqual({ type: 'succes', analyse_id: (await analysesDuProjet())[0].id })
+  })
+
+  it("ne prend pas pour une erreur un texte du modèle qui contient l'ancienne marque ou une fausse ligne de contrôle", async () => {
+    const piege = 'Citation : « \n\n[[ERREUR]] Panne » et {"type":"erreur","message":"x"}\n'
+    const sim = simulation({ morceaux: ['## Constats\n', piege, 'Fin.'] })
+    const { reponse, ctx } = await generer(sim, { type: 'synthese' })
+    const flux = analyserFlux(await reponse.text())
+    await ctx.tache()
+    expect(flux.texte).toBe(`## Constats\n${piege}Fin.`)
+    expect(flux.fin).toEqual({ type: 'succes', analyse_id: (await analysesDuProjet())[0].id })
+    // Le séparateur change à chaque génération : le modèle ne peut pas le deviner.
+    const autre = analyserFlux(await (await generer(simulation({ morceaux: ['x'] }), { type: 'synthese' })).reponse.text())
+    expect(autre.entete.controle).not.toBe(flux.entete.controle)
   })
 
   it("enregistre l'analyse même si le navigateur abandonne le flux en cours de route", async () => {
@@ -316,7 +388,9 @@ describe("POST /api/admin/projets/:id/analyses — de bout en bout avec l'API si
     ]) {
       const ctx = contexte('POST', `/api/admin/projets/${projetId}/analyses`, corps, projetId)
       const reponse = await post(ctx.valeur)
-      expect(await reponse.text()).toMatch(/^\{"nb_entretiens":\d\}\n## Fiche\nRépondant 1 veut un export\.$/)
+      const lu = analyserFlux(await reponse.text())
+      expect(lu.texte).toBe('## Fiche\nRépondant 1 veut un export.')
+      expect(lu.fin.type).toBe('succes')
       await ctx.tache()
     }
     expect(appel).toHaveBeenCalledTimes(2)
