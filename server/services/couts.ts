@@ -24,7 +24,7 @@ export async function enregistrerConsommation(db: D1Database, saisie: SaisieCons
   ).run()
 }
 
-interface LigneCumul { projet_id: string | null; poste: Poste; titre: string | null; cout: number }
+interface LigneCumul { projet_id: string | null; poste: Poste; titre: string | null; cout: number; nb: number }
 
 async function modelesSansTarif(db: D1Database, projetId: string | null, depuis?: string): Promise<string[]> {
   const { results } = await db.prepare(
@@ -38,17 +38,19 @@ async function modelesSansTarif(db: D1Database, projetId: string | null, depuis?
 export async function coutsGlobaux(db: D1Database, options: { depuis?: string } = {}): Promise<CoutsGlobaux> {
   const depuis = options.depuis ?? null
   const { results } = await db.prepare(
-    `SELECT c.projet_id AS projet_id, c.poste AS poste, p.titre AS titre, COALESCE(SUM(c.cout_micro_usd), 0) AS cout
+    `SELECT c.projet_id AS projet_id, c.poste AS poste, p.titre AS titre, COALESCE(SUM(c.cout_micro_usd), 0) AS cout, COUNT(*) AS nb
      FROM consommation_ia c LEFT JOIN projets p ON p.id = c.projet_id
      WHERE ?1 IS NULL OR c.cree_le >= ?1
      GROUP BY c.projet_id, c.poste`,
   ).bind(depuis).all<LigneCumul>()
 
   let total = 0
+  let nbAppels = 0
   let horsProjet = 0
   const parProjet = new Map<string, CoutProjetLigne>()
   for (const ligne of results) {
     total += ligne.cout
+    nbAppels += ligne.nb
     if (ligne.poste === 'interview_critique' || ligne.projet_id === null) {
       horsProjet += ligne.cout
       continue
@@ -62,7 +64,7 @@ export async function coutsGlobaux(db: D1Database, options: { depuis?: string } 
     projet.total += ligne.cout
   }
   const projets = [...parProjet.values()].sort((x, y) => y.total - x.total)
-  return { total, hors_projet: horsProjet, projets, tarifs_manquants: await modelesSansTarif(db, null, options.depuis) }
+  return { total, nb_appels: nbAppels, hors_projet: horsProjet, projets, tarifs_manquants: await modelesSansTarif(db, null, options.depuis) }
 }
 
 export async function coutsProjet(db: D1Database, projetId: string): Promise<CoutsProjet> {

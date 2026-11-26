@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { Button } from '../components/ui/Button'
 import { LIBELLES_POSTE } from '../../shared/tarifs'
 import { api } from './api'
 import { Chargement, CLASSE_LIEN, ErreurChargement, useChargement } from './commun'
@@ -34,8 +35,9 @@ export function ProjetCouts({ projetId }: { projetId: string }) {
           )}
         </>
       )}
-      <p className="mt-4">
+      <p className="mt-4 flex items-center gap-4">
         <Link to="/admin/couts" className={CLASSE_LIEN}>Tous les coûts</Link>
+        <Button size="sm" variant="ghost" onClick={recharger} disabled={etat.phase === 'chargement'}>Actualiser</Button>
       </p>
     </SectionFiche>
   )

@@ -84,7 +84,7 @@ export function CoutsScreen() {
       {etat.phase === 'erreur' && <ErreurChargement message={etat.message} onReessayer={recharger} />}
       {etat.phase === 'pret' && (
         <Card padding="lg">
-          {etat.donnees.total === 0 && etat.donnees.projets.length === 0 ? (
+          {etat.donnees.nb_appels === 0 ? (
             <p className="text-[0.9rem] text-muted">Aucune consommation enregistrée.</p>
           ) : (
             <>

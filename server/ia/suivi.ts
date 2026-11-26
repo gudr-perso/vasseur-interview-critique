@@ -48,7 +48,8 @@ async function lireFlux(corps: ReadableStream<Uint8Array>): Promise<Lecture> {
       for (let fin = tampon.indexOf('\n\n'); fin >= 0; fin = tampon.indexOf('\n\n')) {
         const donnees = tampon.slice(0, fin).split('\n').filter(l => l.startsWith('data:')).map(l => l.slice(5).trim()).join('')
         tampon = tampon.slice(fin + 2)
-        if (!donnees) continue
+        // Seuls message_start et message_delta portent des compteurs : les deltas de texte ne sont pas analysés.
+        if (!donnees.includes('"type":"message_')) continue
         let e: { type?: string; message?: { model?: string; usage?: Usage }; usage?: Usage }
         try { e = JSON.parse(donnees) } catch { continue }
         if (e.type === 'message_start') { lecture.modele = e.message?.model ?? null; fusionner(lecture.usage, e.message?.usage) }

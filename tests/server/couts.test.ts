@@ -56,6 +56,8 @@ describe('coutsGlobaux', () => {
       { projet_id: a, titre: 'A', supprime: false, cadrage: 200 + 5000, interview: 200, analyse: 0, total: 5400 },
     ].sort((x, y) => y.total - x.total))
     expect(c.hors_projet).toBe(20)
+    const { n } = (await base.db.prepare('SELECT COUNT(*) AS n FROM consommation_ia').first<{ n: number }>())!
+    expect(c.nb_appels).toBe(n)
     expect(c.total).toBe(5400 + 2000 + 1000 + 20)
     expect(c.tarifs_manquants).toEqual(['modele-inconnu'])
   })

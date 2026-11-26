@@ -8,6 +8,8 @@ describe('tarifs', () => {
     expect(tarifDe('claude-opus-5-5')?.entree).toBe(4)
     expect(tarifDe('claude-haiku-4-5-20251001')?.entree).toBe(1)
     expect(tarifDe('claude-opus-5-6')).toBeNull()
+    expect(tarifDe('claude-opus-4-5-20251101')?.entree).toBe(5)
+    expect(tarifDe('claude-mythos-5-1')?.lecture).toBe(0.25)
   })
 
   it('ne confond pas un modèle avec une propriété de Object.prototype', () => {

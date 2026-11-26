@@ -39,6 +39,7 @@ describe('GET /api/admin/couts', () => {
     expect(statut).toBe(200)
     expect(donnees).toEqual({
       total: 200 + 100 + 20,
+      nb_appels: 4,
       hors_projet: 20,
       projets: [{ projet_id: projet, titre: 'Saisie des temps', supprime: false, cadrage: 200, interview: 0, analyse: 100, total: 300 }],
       tarifs_manquants: ['modele-inconnu'],

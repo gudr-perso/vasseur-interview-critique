@@ -15,6 +15,8 @@ export interface CoutProjetLigne {
 export interface CoutsGlobaux {
   /** Tout ce qui a été consommé, projets, projets supprimés et interview critique compris. */
   total: number
+  /** Requêtes enregistrées sur la période, avec ou sans tarif. */
+  nb_appels: number
   /** Poste `interview_critique` : consommation sans projet. */
   hors_projet: number
   /** Du plus cher au moins cher. */
