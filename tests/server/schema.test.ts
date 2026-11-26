@@ -39,8 +39,8 @@ describe('schéma D1', () => {
     await db.prepare(
       'INSERT INTO analyses (id, projet_id, type, contenu, source, nb_entretiens, cree_le) VALUES (?,?,?,?,?,?,?)',
     ).bind('a1', 'p1', 'synthese', '# Synthèse', 'mcp', 1, maintenant).run()
-    await db.prepare('INSERT INTO cadrage_messages (id, projet_id, role, contenu, cree_le) VALUES (?,?,?,?,?)')
-      .bind('m1', 'p1', 'ia', 'Quel est le périmètre ?', maintenant).run()
+    await db.prepare('INSERT INTO cadrage_messages (id, projet_id, role, type, contenu, cree_le) VALUES (?,?,?,?,?,?)')
+      .bind('m1', 'p1', 'ia', 'question', 'Quel est le périmètre ?', maintenant).run()
     await db.prepare(
       `INSERT INTO analyses (id, projet_id, questionnaire_id, repondant_id, type, contenu, source, nb_entretiens, cree_le)
        VALUES (?,?,?,?,?,?,?,?,?)`,
@@ -150,6 +150,47 @@ describe('migration 0003 : numéro des répondants', () => {
         { projet_id: 'p1', numero: 3, repondant_id: 'r-b' },
         { projet_id: 'p2', numero: 1, repondant_id: 'r-z' },
       ])
+    } finally {
+      await ancienne.fermer()
+    }
+  })
+})
+
+describe('migration 0004 : type des messages de cadrage', () => {
+  it('donne un type cohérent aux messages existants, garde leur ordre et la suppression en cascade', async () => {
+    const ancienne = await creerBaseDeTest('0004_type_message_cadrage.sql')
+    try {
+      const { db } = ancienne
+      await db.prepare(
+        `INSERT INTO projets (id, titre, type_demande, modele_cadrage, modele_interview, modele_analyse, cree_le, maj_le)
+         VALUES ('p1','x','amelioration','m','m','m',?,?)`,
+      ).bind(maintenant, maintenant).run()
+      const messages: [string, string, string][] = [
+        ['m-z', 'ia', 'Qui saisit les temps ?'],
+        ['m-y', 'admin', 'Le comptable, et vous ?'],
+        ['m-x', 'ia', 'Utilisez-vous « Zeendoc » ?»'],
+        ['m-w', 'admin', 'Oui.'],
+        ['m-v', 'ia', "J'ai assez d'éléments : le cadrage peut être conclu."],
+      ]
+      for (const [id, role, contenu] of messages) {
+        await db.prepare('INSERT INTO cadrage_messages (id, projet_id, role, contenu, cree_le) VALUES (?,?,?,?,?)')
+          .bind(id, 'p1', role, contenu, maintenant).run()
+      }
+      await appliquerMigration(db, '0004_type_message_cadrage.sql')
+      const { results } = await db.prepare(
+        "SELECT id, role, type FROM cadrage_messages WHERE projet_id = 'p1' ORDER BY cree_le, rowid",
+      ).all()
+      expect(results).toEqual([
+        { id: 'm-z', role: 'ia', type: 'question' },
+        { id: 'm-y', role: 'admin', type: 'reponse' },
+        { id: 'm-x', role: 'ia', type: 'question' },
+        { id: 'm-w', role: 'admin', type: 'reponse' },
+        { id: 'm-v', role: 'ia', type: 'conclusion' },
+      ])
+      const index = await db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'cadrage_messages'").all()
+      expect(index.results).toContainEqual({ name: 'idx_cadrage_projet' })
+      await db.prepare("DELETE FROM projets WHERE id = 'p1'").run()
+      expect((await db.prepare('SELECT COUNT(*) AS n FROM cadrage_messages').first<{ n: number }>())!.n).toBe(0)
     } finally {
       await ancienne.fermer()
     }

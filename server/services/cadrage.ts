@@ -8,11 +8,20 @@ import { lireProjet } from './projets'
 
 export type RoleCadrage = 'ia' | 'admin'
 
+/** Nature d'un message : question ou conclusion de l'IA, réponse de l'admin. */
+export type TypeMessageCadrage = 'question' | 'reponse' | 'conclusion'
+
 export interface MessageCadrage {
   id: string
   role: RoleCadrage
+  type: TypeMessageCadrage
   contenu: string
   cree_le: string
+}
+
+/** Auteur d'un message d'après sa nature : seule une réponse vient de l'admin. */
+export function roleDuType(type: TypeMessageCadrage): RoleCadrage {
+  return type === 'reponse' ? 'admin' : 'ia'
 }
 
 /** Questions que l'IA peut poser, selon l'ampleur de la demande (décision 4 du plan). */
@@ -29,33 +38,36 @@ export function plafondQuestions(typeDemande: TypeDemande): number {
   return PLAFONDS[typeDemande]
 }
 
-// Une question se termine par un point d'interrogation, éventuellement suivi d'une parenthèse ou d'un guillemet.
-const FIN_DE_QUESTION = /\?[\s)\]»"'”’]*$/
+/** Nombre de questions posées par l'IA, d'après la nature enregistrée de chaque message. */
+export function questionsPosees(messages: Pick<MessageCadrage, 'type'>[]): number {
+  return messages.filter(m => m.type === 'question').length
+}
 
-/** Nombre de messages de l'IA qui posent une question (les autres concluent le cadrage). */
-export function questionsPosees(messages: Pick<MessageCadrage, 'role' | 'contenu'>[]): number {
-  return messages.filter(m => m.role === 'ia' && FIN_DE_QUESTION.test(m.contenu.trim())).length
+/** Vrai quand l'IA a conclu le dialogue : son dernier message est une conclusion. */
+export function dialogueConclu(messages: Pick<MessageCadrage, 'type'>[]): boolean {
+  return messages.at(-1)?.type === 'conclusion'
 }
 
 export async function listerMessages(db: D1Database, projetId: string): Promise<MessageCadrage[]> {
   const { results } = await db.prepare(
-    'SELECT id, role, contenu, cree_le FROM cadrage_messages WHERE projet_id = ? ORDER BY cree_le, rowid',
+    'SELECT id, role, type, contenu, cree_le FROM cadrage_messages WHERE projet_id = ? ORDER BY cree_le, rowid',
   ).bind(projetId).all<MessageCadrage>()
   return results
 }
 
 export async function ajouterMessage(
-  db: D1Database, projetId: string, role: RoleCadrage, contenu: string,
+  db: D1Database, projetId: string, type: TypeMessageCadrage, contenu: string,
 ): Promise<MessageCadrage> {
+  const role = roleDuType(type)
   await lireProjet(db, projetId)
   const texte = contenu.trim()
   if (estInvisible(texte)) throw new ErreurMetier('Le message est vide.')
   verifierLongueur(
     texte, role === 'admin' ? LIMITES.message_cadrage_admin : LIMITES.message_cadrage_ia, 'Message trop long',
   )
-  const message: MessageCadrage = { id: nouvelId(), role, contenu: texte, cree_le: maintenantIso() }
-  await db.prepare('INSERT INTO cadrage_messages (id, projet_id, role, contenu, cree_le) VALUES (?,?,?,?,?)')
-    .bind(message.id, projetId, role, texte, message.cree_le).run()
+  const message: MessageCadrage = { id: nouvelId(), role, type, contenu: texte, cree_le: maintenantIso() }
+  await db.prepare('INSERT INTO cadrage_messages (id, projet_id, role, type, contenu, cree_le) VALUES (?,?,?,?,?,?)')
+    .bind(message.id, projetId, role, type, texte, message.cree_le).run()
   return message
 }
 

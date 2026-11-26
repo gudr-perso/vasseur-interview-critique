@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import {
-  ajouterMessage, contexteCadrage, effacerDialogue, listerMessages, MAX_CONTEXTE, plafondQuestions, questionsPosees,
+  ajouterMessage, contexteCadrage, dialogueConclu, effacerDialogue, listerMessages, MAX_CONTEXTE, plafondQuestions, questionsPosees,
 } from '../../server/services/cadrage'
 import { enregistrerLogiciel } from '../../server/services/logiciels'
 import { ajouterDocument, creerProjet, modifierProjet } from '../../server/services/projets'
@@ -19,12 +19,14 @@ const nouveauProjet = (titre = 'Saisie des temps', type_demande: 'amelioration' 
 describe('messages du dialogue', () => {
   it('les liste dans l\'ordre d\'écriture, même à la même milliseconde', async () => {
     const id = await nouveauProjet()
-    await ajouterMessage(base.db, id, 'ia', 'Quel est le besoin ?')
-    await ajouterMessage(base.db, id, 'admin', 'Saisir les temps plus vite.')
-    await ajouterMessage(base.db, id, 'ia', 'Qui saisit ?')
+    await ajouterMessage(base.db, id, 'question', 'Quel est le besoin ?')
+    await ajouterMessage(base.db, id, 'reponse', 'Saisir les temps plus vite.')
+    await ajouterMessage(base.db, id, 'conclusion', 'Le cadrage peut être conclu.')
     const messages = await listerMessages(base.db, id)
-    expect(messages.map(m => [m.role, m.contenu])).toEqual([
-      ['ia', 'Quel est le besoin ?'], ['admin', 'Saisir les temps plus vite.'], ['ia', 'Qui saisit ?'],
+    expect(messages.map(m => [m.role, m.type, m.contenu])).toEqual([
+      ['ia', 'question', 'Quel est le besoin ?'],
+      ['admin', 'reponse', 'Saisir les temps plus vite.'],
+      ['ia', 'conclusion', 'Le cadrage peut être conclu.'],
     ])
     expect(messages[0].cree_le).toMatch(/^\d{4}-\d{2}-\d{2}T/)
   })
@@ -32,21 +34,21 @@ describe('messages du dialogue', () => {
   it('ne mélange pas les projets et efface le dialogue d\'un seul', async () => {
     const a = await nouveauProjet('A')
     const b = await nouveauProjet('B')
-    await ajouterMessage(base.db, a, 'ia', 'Question A ?')
-    await ajouterMessage(base.db, b, 'ia', 'Question B ?')
+    await ajouterMessage(base.db, a, 'question', 'Question A ?')
+    await ajouterMessage(base.db, b, 'question', 'Question B ?')
     await effacerDialogue(base.db, a)
     expect(await listerMessages(base.db, a)).toEqual([])
     expect((await listerMessages(base.db, b)).map(m => m.contenu)).toEqual(['Question B ?'])
   })
 
   it('refuse un projet inconnu (404) pour l\'ajout comme pour l\'effacement', async () => {
-    await expect(ajouterMessage(base.db, 'inconnu', 'admin', 'Bonjour')).rejects.toMatchObject({ statut: 404 })
+    await expect(ajouterMessage(base.db, 'inconnu', 'reponse', 'Bonjour')).rejects.toMatchObject({ statut: 404 })
     await expect(effacerDialogue(base.db, 'inconnu')).rejects.toMatchObject({ statut: 404 })
   })
 
   it('refuse un message vide ou invisible', async () => {
     const id = await nouveauProjet()
-    await expect(ajouterMessage(base.db, id, 'admin', '   ')).rejects.toThrow(/vide/)
+    await expect(ajouterMessage(base.db, id, 'reponse', '   ')).rejects.toThrow(/vide/)
     await expect(ajouterMessage(base.db, id, 'admin', '​ ')).rejects.toThrow(/vide/)
     expect(await listerMessages(base.db, id)).toEqual([])
   })
@@ -55,11 +57,25 @@ describe('messages du dialogue', () => {
     const id = await nouveauProjet()
     expect(LIMITES.message_cadrage_admin).toBe(4000)
     expect(LIMITES.message_cadrage_ia).toBe(2000)
-    await expect(ajouterMessage(base.db, id, 'admin', 'x'.repeat(4000))).resolves.toBeTruthy()
-    await expect(ajouterMessage(base.db, id, 'admin', 'x'.repeat(4001))).rejects.toThrow(/4000 caractères au plus/)
-    await expect(ajouterMessage(base.db, id, 'ia', 'x'.repeat(2000))).resolves.toBeTruthy()
-    await expect(ajouterMessage(base.db, id, 'ia', 'x'.repeat(2001))).rejects.toThrow(/2000 caractères au plus/)
+    await expect(ajouterMessage(base.db, id, 'reponse', 'x'.repeat(4000))).resolves.toBeTruthy()
+    await expect(ajouterMessage(base.db, id, 'reponse', 'x'.repeat(4001))).rejects.toThrow(/4000 caractères au plus/)
+    await expect(ajouterMessage(base.db, id, 'question', 'x'.repeat(2000))).resolves.toBeTruthy()
+    await expect(ajouterMessage(base.db, id, 'question', 'x'.repeat(2001))).rejects.toThrow(/2000 caractères au plus/)
+    await expect(ajouterMessage(base.db, id, 'conclusion', 'x'.repeat(2001))).rejects.toThrow(/2000 caractères au plus/)
     expect(await listerMessages(base.db, id)).toHaveLength(2)
+  })
+
+  it('refuse en base un type sans rapport avec l\'auteur ou inconnu', async () => {
+    const id = await nouveauProjet()
+    const inserer = (role: string, type: string) => base.db.prepare(
+      'INSERT INTO cadrage_messages (id, projet_id, role, type, contenu, cree_le) VALUES (?,?,?,?,?,?)',
+    ).bind(`m-${role}-${type}`, id, role, type, 'Texte', '2026-11-26T10:00:00.000Z').run()
+    for (const [role, type] of [['admin', 'question'], ['admin', 'conclusion'], ['ia', 'reponse'], ['ia', 'autre']]) {
+      await expect(inserer(role, type), `${role}/${type}`).rejects.toThrow(/CHECK/)
+    }
+    await expect(base.db.prepare('INSERT INTO cadrage_messages (id, projet_id, role, contenu, cree_le) VALUES (?,?,?,?,?)')
+      .bind('m-sans-type', id, 'ia', 'Texte', '2026-11-26T10:00:00.000Z').run()).rejects.toThrow(/NOT NULL/)
+    expect(await listerMessages(base.db, id)).toEqual([])
   })
 })
 
@@ -70,15 +86,28 @@ describe('plafond de questions', () => {
     expect(plafondQuestions('nouvelle_fonctionnalite')).toBe(12)
   })
 
-  it('compte les messages de l\'IA qui sont des questions, pas ceux de l\'admin ni les conclusions', () => {
+  it('compte les questions d\'après leur type enregistré, pas les réponses de l\'admin ni les conclusions', () => {
     expect(questionsPosees([])).toBe(0)
     expect(questionsPosees([
-      { role: 'ia', contenu: 'Quel est le besoin ?' },
-      { role: 'admin', contenu: 'Et si on le faisait ?' },
-      { role: 'ia', contenu: 'Qui saisit (le comptable) ? ' },
-      { role: 'ia', contenu: 'Utilisez-vous « Zeendoc » ?»' },
-      { role: 'ia', contenu: 'J\'ai assez d\'éléments : le cadrage peut être conclu.' },
+      { type: 'question' }, { type: 'reponse' }, { type: 'question' }, { type: 'reponse' }, { type: 'question' }, { type: 'conclusion' },
     ])).toBe(3)
+  })
+
+  it('ne devine rien d\'après le texte : une question sans « ? » compte, une réponse qui en finit par un ne compte pas', async () => {
+    const id = await nouveauProjet()
+    await ajouterMessage(base.db, id, 'question', 'Décrivez la saisie actuelle.')
+    await ajouterMessage(base.db, id, 'reponse', 'Et si on le faisait ?')
+    await ajouterMessage(base.db, id, 'conclusion', 'Faut-il aller plus loin ? Non : le cadrage peut être conclu ?')
+    const messages = await listerMessages(base.db, id)
+    expect(questionsPosees(messages)).toBe(1)
+    expect(dialogueConclu(messages)).toBe(true)
+  })
+
+  it('dit si le dialogue est conclu : seulement quand le dernier message est une conclusion', () => {
+    expect(dialogueConclu([])).toBe(false)
+    expect(dialogueConclu([{ type: 'question' }])).toBe(false)
+    expect(dialogueConclu([{ type: 'question' }, { type: 'reponse' }])).toBe(false)
+    expect(dialogueConclu([{ type: 'question' }, { type: 'reponse' }, { type: 'conclusion' }])).toBe(true)
   })
 })
 
