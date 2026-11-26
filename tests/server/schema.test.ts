@@ -196,3 +196,18 @@ describe('migration 0004 : type des messages de cadrage', () => {
     }
   })
 })
+
+describe('migration 0005 : consommation de l\'IA', () => {
+  const colonnes = 'id, cree_le, poste, modele, jetons_entree, jetons_sortie, cache_lecture, cache_ecriture'
+  const inserer = (poste: string) =>
+    base.db.prepare(`INSERT INTO consommation_ia (${colonnes}) VALUES (?,?,?,?,?,?,?,?)`)
+      .bind(`c-${poste}`, maintenant, poste, 'claude-opus-5-5', 1, 2, 3, 4).run()
+
+  it('accepte les quatre postes sans projet ni coût, et refuse un poste inconnu', async () => {
+    for (const poste of ['cadrage', 'interview', 'analyse', 'interview_critique']) await inserer(poste)
+    await expect(inserer('autre')).rejects.toThrow()
+    const ligne = await base.db.prepare("SELECT projet_id, cout_micro_usd FROM consommation_ia WHERE id = 'c-cadrage'")
+      .first<{ projet_id: string | null; cout_micro_usd: number | null }>()
+    expect(ligne).toEqual({ projet_id: null, cout_micro_usd: null })
+  })
+})
