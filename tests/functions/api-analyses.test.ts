@@ -220,7 +220,7 @@ describe('POST /api/admin/projets/:id/analyses — génération en flux', () => 
     const sim = simulation({ morceaux: ['## Constats\n', '2 répondants sur 2 ', 'veulent un export.'] })
     const { reponse, ctx } = await generer(sim, { type: 'synthese', questionnaire_id: qComptables.id })
     expect(reponse.status).toBe(200)
-    expect(reponse.headers.get('Content-Type')).toBe('text/plain; charset=utf-8')
+    expect(reponse.headers.get('Content-Type')).toBe('text/event-stream; charset=utf-8')
     expect(reponse.headers.get('Cache-Control')).toContain('no-store')
     const flux = analyserFlux(await reponse.text())
     expect(flux.entete.nb_entretiens).toBe(2)

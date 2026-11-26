@@ -209,7 +209,7 @@ export interface ReglagesFlux {
 }
 
 /**
- * Lance une analyse et répond aussitôt avec un flux `text/plain` dont le contrat est décrit dans
+ * Lance une analyse et répond aussitôt avec un flux (servi en `text/event-stream`) dont le contrat est décrit dans
  * `shared/analyses.ts` : en-tête JSON avec le séparateur, texte au fil de l'eau, lignes de contrôle
  * (signal de vie, puis succès avec l'identifiant de l'analyse enregistrée, ou erreur).
  *
@@ -331,8 +331,10 @@ export async function repondreAnalyse(
   return new Response(readable, {
     status: 200,
     headers: {
-      'Content-Type': 'text/plain; charset=utf-8',
-      // Ni cache ni recompression qui retiendrait les morceaux.
+      // `text/event-stream` : Cloudflare (et wrangler en local) compresse un `text/plain` en gzip malgré
+      // `no-transform`, ce qui retient les morceaux jusqu'à la fin ; un flux d'événements ne l'est jamais.
+      // Le corps garde son propre format (voir `shared/analyses.ts`) : le client le lit brut.
+      'Content-Type': 'text/event-stream; charset=utf-8',
       'Cache-Control': 'no-store, no-transform',
       'X-Content-Type-Options': 'nosniff',
     },
