@@ -31,6 +31,18 @@ export interface ResultatFlux<C, S> {
   erreur?: string
 }
 
+/** Issue d'un flux : succès confirmé par le serveur, ou erreur (`entete` non nul : la demande avait été acceptée). */
+export type FinFlux<C, S> =
+  | { phase: 'terminee'; texte: string; entete: C; succes: S }
+  | { phase: 'erreur'; texte: string; entete: C | null; message: string }
+
+/** Issue d'un flux lu jusqu'au bout : un succès exige l'en-tête, la ligne de succès et aucune erreur. */
+export function finDuFlux<C, S>(resultat: ResultatFlux<C, S>): FinFlux<C, S> {
+  const { entete, texte, succes, erreur } = resultat
+  if (erreur === undefined && succes !== undefined && entete !== null) return { phase: 'terminee', texte, entete, succes }
+  return { phase: 'erreur', texte, entete, message: erreur ?? ERREUR_SANS_MESSAGE }
+}
+
 /** Charge utile faite d'un seul identifiant non vide, par exemple `{ questionnaire_id }`. */
 export function identifiant<K extends string>(cle: K): (valeur: ObjetRecu) => Record<K, string> | null {
   return valeur => {

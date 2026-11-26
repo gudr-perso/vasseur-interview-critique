@@ -9,6 +9,7 @@ import { Adresse } from './Adresse'
 import { api } from './api'
 import { ChampListe, ChampTexte, ChampZone } from './champs'
 import { Alerte, useAction } from './commun'
+import { GenerationQuestionnaire } from './GenerationQuestionnaire'
 import { contenuVide, estHybride } from './contenu'
 import { libelle, LIBELLES_MODE, LIBELLES_STATUT_QUESTIONNAIRE, optionsDe } from './libelles'
 import { useSaisieNonEnregistree } from './saisies'
@@ -107,18 +108,33 @@ function FormulaireQuestionnaire(
 interface Props {
   projetId: string
   questionnaires: QuestionnaireResume[]
+  /** Modèle de cadrage du projet, utilisé par la génération. */
+  modele: string
+  /** La note de cadrage enregistrée est vide. */
+  noteVide: boolean
   onCree: (questionnaire: Questionnaire) => void
 }
 
-export function ProjetQuestionnaires({ projetId, questionnaires, onCree }: Props) {
+type Ouvert = 'aucun' | 'creation' | 'generation'
+
+export function ProjetQuestionnaires({ projetId, questionnaires, modele, noteVide, onCree }: Props) {
   const naviguer = useNavigate()
-  const [creation, setCreation] = useState(false)
+  const [ouvert, setOuvert] = useState<Ouvert>('aucun')
 
   const ouvrirEditeur = (questionnaire: Questionnaire) => {
     // La fiche est mise à jour d'abord : si une autre section retient la navigation, le questionnaire y figure déjà.
     onCree(questionnaire)
-    setCreation(false)
+    setOuvert('aucun')
     naviguer(`/admin/questionnaires/${questionnaire.id}`)
+  }
+
+  /** Brouillon créé par l'IA : relu pour la liste de la fiche, puis ouvert ; à défaut, ouvert directement. */
+  const ouvrirGenere = async (id: string) => {
+    try {
+      ouvrirEditeur(await api.questionnaires.lire(id))
+    } catch {
+      naviguer(`/admin/questionnaires/${id}`)
+    }
   }
 
   return (
@@ -143,9 +159,21 @@ export function ProjetQuestionnaires({ projetId, questionnaires, onCree }: Props
             ))}
           </ul>
         )}
-      {creation
-        ? <FormulaireQuestionnaire projetId={projetId} onCree={ouvrirEditeur} onAnnuler={() => setCreation(false)} />
-        : <Button className="mt-4" onClick={() => setCreation(true)}>Nouveau questionnaire</Button>}
+      {ouvert === 'creation' && (
+        <FormulaireQuestionnaire projetId={projetId} onCree={ouvrirEditeur} onAnnuler={() => setOuvert('aucun')} />
+      )}
+      {ouvert === 'generation' && (
+        <GenerationQuestionnaire
+          projetId={projetId} modele={modele} noteVide={noteVide}
+          onGenere={id => void ouvrirGenere(id)} onFermer={() => setOuvert('aucun')}
+        />
+      )}
+      {ouvert === 'aucun' && (
+        <div className="flex flex-wrap gap-2 mt-4">
+          <Button onClick={() => setOuvert('creation')}>Nouveau questionnaire</Button>
+          <Button onClick={() => setOuvert('generation')}>Générer avec l'IA</Button>
+        </div>
+      )}
     </SectionFiche>
   )
 }

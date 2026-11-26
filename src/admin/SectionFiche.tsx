@@ -7,6 +7,8 @@ interface Enregistrement {
   action: Action
   /** La section porte des modifications : sans elles, le bouton reste désactivé. */
   modifie: boolean
+  /** Un travail en cours remplit la section (l'IA rédige) : l'enregistrement attend qu'il finisse. */
+  bloque?: boolean
   onEnregistrer: () => void
 }
 
@@ -37,10 +39,10 @@ export function SectionFiche({ titre, aide, enregistrement, children }: SectionF
     )
   }
 
-  const { action, modifie, onEnregistrer } = enregistrement
+  const { action, modifie, bloque = false, onEnregistrer } = enregistrement
   const soumettre = (e: FormEvent) => {
     e.preventDefault()
-    if (modifie && !action.enCours) onEnregistrer()
+    if (modifie && !bloque && !action.enCours) onEnregistrer()
   }
 
   return (
@@ -53,7 +55,7 @@ export function SectionFiche({ titre, aide, enregistrement, children }: SectionF
           {children}
         </fieldset>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mt-2">
-          <Button type="submit" variant="primary" loading={action.enCours} disabled={!modifie}>Enregistrer</Button>
+          <Button type="submit" variant="primary" loading={action.enCours} disabled={!modifie || bloque}>Enregistrer</Button>
           {modifie && !action.enCours && (
             <span className="font-mono text-[0.66rem] uppercase tracking-wider text-warn-fg">Modifications non enregistrées</span>
           )}

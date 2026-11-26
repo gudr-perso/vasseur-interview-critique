@@ -1,10 +1,16 @@
-import type { Analyse, AnalyseResume, TypeAnalyse } from '../../shared/analyses'
+import type { Analyse, AnalyseResume, SuccesAnalyse, TypeAnalyse } from '../../shared/analyses'
+import type {
+  EnteteCadrage, EnteteTourCadrage, EtatDialogue, SuccesTexteCadrage, SuccesTourCadrage,
+} from '../../shared/cadrage'
+import type { EnteteGeneration, SuccesGeneration, SuccesPublics } from '../../shared/generation'
 import type {
   Contenu, DocumentProjet, Logiciel, Mode, ProjetComplet, ProjetFiche, ProjetResume, Questionnaire, StatutProjet, TypeDemande,
 } from '../../shared/interviews'
 import type { Etape } from '../../shared/modeles'
 import type { EntretienLu, Identite, RepondantResume } from '../../shared/repondants'
-import { lireFluxAnalyse, REPONSE_INATTENDUE, type ResultatGeneration } from './fluxAnalyse'
+import { lireFlux, REPONSE_INATTENDUE, type FormatFlux, type ResultatFlux } from './flux'
+import { FORMAT_ANALYSE, type EnteteAnalyse } from './fluxAnalyse'
+import { FORMAT_PUBLICS, FORMAT_QUESTIONNAIRE, FORMAT_TEXTE_CADRAGE, FORMAT_TOUR } from './formatsFlux'
 
 export class ErreurApi extends Error {
   constructor(message: string, readonly statut: number) {
@@ -56,26 +62,39 @@ export interface DemandeAnalyse {
   inclure_en_cours?: boolean
 }
 
-const COUPURE_FLUX =
-  "Connexion interrompue pendant la génération : l'analyse n'a sans doute pas été enregistrée. Actualisez la liste pour vérifier, sinon relancez-la."
+/** Reçoit le texte cumulé et les champs de l'en-tête, à chaque morceau. */
+export type SurTexte<C> = (texte: string, entete: C) => void
 
 /**
- * Lance une analyse et en suit le flux. `surTexte` reçoit le texte cumulé à chaque morceau.
- * Les refus du serveur (400, 413, 503…) sont levés en `ErreurApi` ; un échec en cours de route est
- * renvoyé dans `erreur`. Si `signal` est interrompu, l'erreur d'interruption est relancée telle quelle.
+ * Envoie la demande et lit la réponse en flux (`./flux`). Les refus du serveur (400, 409, 503…) sont levés en
+ * `ErreurApi` ; un échec en cours de route est renvoyé dans `erreur`, une coupure de lecture levée avec `coupure`.
+ * Si `signal` est interrompu, l'erreur d'interruption est relancée telle quelle.
  */
-async function generer(
-  projetId: string, demande: DemandeAnalyse,
-  surTexte: (texte: string, nb_entretiens: number) => void, signal?: AbortSignal,
-): Promise<ResultatGeneration> {
-  const reponse = await envoyer('POST', `/projets/${projetId}/analyses`, demande, signal)
+async function appelEnFlux<C, S>(
+  chemin: string, corps: unknown, format: FormatFlux<C, S>, coupure: string, surTexte: SurTexte<C>, signal?: AbortSignal,
+): Promise<ResultatFlux<C, S>> {
+  const reponse = await envoyer('POST', chemin, corps, signal)
   if (!reponse.body) throw new ErreurApi(REPONSE_INATTENDUE, reponse.status)
   try {
-    return await lireFluxAnalyse(reponse.body, surTexte)
+    return await lireFlux(reponse.body, format, surTexte)
   } catch (e) {
     if (signal?.aborted) throw e
-    throw new ErreurApi(COUPURE_FLUX, 0)
+    throw new ErreurApi(coupure, 0)
   }
+}
+
+const COUPURE_ANALYSE =
+  "Connexion interrompue pendant la génération : l'analyse n'a sans doute pas été enregistrée. Actualisez la liste pour vérifier, sinon relancez-la."
+const COUPURE_TOUR = "Connexion interrompue pendant la réponse de l'IA. Relancez-la."
+const COUPURE_TEXTE = 'Connexion interrompue pendant la rédaction. Relancez-la.'
+const COUPURE_PUBLICS = 'Connexion interrompue pendant la proposition des publics. Relancez-la.'
+const COUPURE_QUESTIONNAIRE =
+  "Connexion interrompue pendant la génération : le brouillon n'a sans doute pas été créé. Actualisez la page pour vérifier, sinon relancez-la."
+
+export interface DemandeGenerationQuestionnaire {
+  public_vise: string
+  mode: Mode
+  consignes?: string
 }
 
 export interface SaisieProjet {
@@ -123,6 +142,32 @@ export const api = {
       appel<DocumentProjet>('POST', `/projets/${id}/documents`, saisie),
     creerQuestionnaire: (id: string, saisie: SaisieQuestionnaire) =>
       appel<Questionnaire>('POST', `/projets/${id}/questionnaires`, saisie),
+    /** Publics proposés par l'IA ; rien n'est enregistré. */
+    proposerPublics: (id: string, surTexte: SurTexte<EnteteGeneration>, signal?: AbortSignal) =>
+      appelEnFlux<EnteteGeneration, SuccesPublics>(
+        `/projets/${id}/questionnaires/publics`, {}, FORMAT_PUBLICS, COUPURE_PUBLICS, surTexte, signal),
+    /** Questionnaire rédigé par l'IA, créé en brouillon. */
+    genererQuestionnaire: (
+      id: string, demande: DemandeGenerationQuestionnaire, surTexte: SurTexte<EnteteGeneration>, signal?: AbortSignal,
+    ) => appelEnFlux<EnteteGeneration, SuccesGeneration>(
+      `/projets/${id}/questionnaires/generer`, demande, FORMAT_QUESTIONNAIRE, COUPURE_QUESTIONNAIRE, surTexte, signal),
+  },
+  cadrage: {
+    lire: (projetId: string) => appel<EtatDialogue>('GET', `/projets/${projetId}/cadrage`),
+    /** Efface le dialogue ; la note de cadrage est conservée. */
+    recommencer: (projetId: string) => appel<void>('DELETE', `/projets/${projetId}/cadrage`),
+    /** Un tour : `texte` est la réponse de l'admin, absent pour la première question ou pour relancer l'IA. */
+    tour: (projetId: string, texte: string | undefined, surTexte: SurTexte<EnteteTourCadrage>, signal?: AbortSignal) =>
+      appelEnFlux<EnteteTourCadrage, SuccesTourCadrage>(
+        `/projets/${projetId}/cadrage/tour`, texte === undefined ? {} : { texte }, FORMAT_TOUR, COUPURE_TOUR, surTexte, signal),
+    /** Note de cadrage au fil de l'eau ; rien n'est enregistré. */
+    note: (projetId: string, surTexte: SurTexte<EnteteCadrage>, signal?: AbortSignal) =>
+      appelEnFlux<EnteteCadrage, SuccesTexteCadrage>(
+        `/projets/${projetId}/cadrage/note`, undefined, FORMAT_TEXTE_CADRAGE, COUPURE_TEXTE, surTexte, signal),
+    /** Résumé de contexte au fil de l'eau ; rien n'est enregistré. */
+    resume: (projetId: string, surTexte: SurTexte<EnteteCadrage>, signal?: AbortSignal) =>
+      appelEnFlux<EnteteCadrage, SuccesTexteCadrage>(
+        `/projets/${projetId}/cadrage/resume`, undefined, FORMAT_TEXTE_CADRAGE, COUPURE_TEXTE, surTexte, signal),
   },
   documents: {
     supprimer: (id: string) => appel<void>('DELETE', `/documents/${id}`),
@@ -152,7 +197,10 @@ export const api = {
     },
     lire: (id: string) => appel<Analyse>('GET', `/analyses/${id}`),
     supprimer: (id: string) => appel<void>('DELETE', `/analyses/${id}`),
-    generer,
+    /** Analyse générée par l'IA et enregistrée à la fin du flux. */
+    generer: (projetId: string, demande: DemandeAnalyse, surTexte: SurTexte<EnteteAnalyse>, signal?: AbortSignal) =>
+      appelEnFlux<EnteteAnalyse, SuccesAnalyse>(
+        `/projets/${projetId}/analyses`, demande, FORMAT_ANALYSE, COUPURE_ANALYSE, surTexte, signal),
   },
 }
 

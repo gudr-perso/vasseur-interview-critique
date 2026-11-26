@@ -18,7 +18,7 @@ export interface ResultatGeneration {
 export const FLUX_INACHEVE =
   "La connexion s'est arrêtée avant la fin de la génération : l'analyse n'a sans doute pas été enregistrée. Actualisez la liste pour vérifier, sinon relancez-la."
 
-interface EnteteAnalyse {
+export interface EnteteAnalyse {
   nb_entretiens: number
 }
 
@@ -27,7 +27,7 @@ function lireEnteteAnalyse(valeur: ObjetRecu): EnteteAnalyse | null {
   return typeof n === 'number' && Number.isInteger(n) && n >= 0 ? { nb_entretiens: n } : null
 }
 
-const FORMAT_ANALYSE: FormatFlux<EnteteAnalyse, SuccesAnalyse> = {
+export const FORMAT_ANALYSE: FormatFlux<EnteteAnalyse, SuccesAnalyse> = {
   entete: lireEnteteAnalyse,
   succes: identifiant('analyse_id'),
   fluxCoupe: FLUX_INACHEVE,

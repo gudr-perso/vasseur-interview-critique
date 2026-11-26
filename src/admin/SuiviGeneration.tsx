@@ -1,22 +1,11 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useLayoutEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
-import { Spinner } from '../components/ui/Spinner'
 import { ApercuMarkdown } from './ApercuMarkdown'
 import { CLASSE_AIDE } from './champs'
 import { Alerte, CLASSE_LIEN_BOUTON, Confirmation } from './commun'
+import { AppelEnCours } from './EtatAppel'
 import { AVERTISSEMENT_SORTIE, type EtatGeneration } from './generation'
 import { nombre } from './libelles'
-
-/** Temps écoulé depuis `debut`, rafraîchi chaque seconde. */
-function Duree({ debut }: { debut: number }) {
-  const [maintenant, setMaintenant] = useState(() => Date.now())
-  useEffect(() => {
-    const minuterie = window.setInterval(() => setMaintenant(Date.now()), 1000)
-    return () => window.clearInterval(minuterie)
-  }, [])
-  const secondes = Math.max(0, Math.floor((maintenant - debut) / 1000))
-  return <>{Math.floor(secondes / 60)} min {String(secondes % 60).padStart(2, '0')} s</>
-}
 
 /** Aperçu qui suit la fin du texte tant que l'on n'a pas remonté soi-même. */
 function ApercuDirect({ texte }: { texte: string }) {
@@ -39,22 +28,15 @@ function ApercuDirect({ texte }: { texte: string }) {
   )
 }
 
-const CLASSE_ETAT = 'font-mono text-[0.66rem] uppercase tracking-wider'
-
 function EnCours({ etat }: { etat: Extract<EtatGeneration, { phase: 'en_cours' }> }) {
   const demarre = etat.nb_entretiens !== null
   return (
     <>
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <span role="status" className={`${CLASSE_ETAT} inline-flex items-center gap-2 text-ink`}>
-          <Spinner size="sm" />
-          {demarre ? `Génération en cours — ${nombre(etat.nb_entretiens ?? 0)} entretien(s)` : "Préparation des entretiens…"}
-        </span>
-        <span className={`${CLASSE_ETAT} text-muted`}>
-          <Duree debut={etat.debut} />{etat.texte && ` · ${nombre(etat.texte.length)} caractères`}
-        </span>
-      </div>
-      <p className="text-[0.8rem] text-warn-fg font-medium mt-2 leading-snug">{AVERTISSEMENT_SORTIE}</p>
+      <AppelEnCours
+        libelle={demarre ? `Génération en cours — ${nombre(etat.nb_entretiens ?? 0)} entretien(s)` : 'Préparation des entretiens…'}
+        debut={etat.debut} avertissement={AVERTISSEMENT_SORTIE}
+        detail={etat.texte ? `${nombre(etat.texte.length)} caractères` : undefined}
+      />
       {!etat.texte && <p className={CLASSE_AIDE}>L'IA lit les entretiens ; le texte s'affichera ici dès les premiers mots.</p>}
       <ApercuDirect texte={etat.texte} />
     </>
